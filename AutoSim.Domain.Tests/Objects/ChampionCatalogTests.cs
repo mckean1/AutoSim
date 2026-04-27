@@ -161,6 +161,29 @@ namespace AutoSim.Domain.Tests.Objects
             Assert.That(champions.Select(champion => champion.Id), Is.EquivalentTo(ExpectedChampionIds));
         }
 
+        [Test]
+        public void GetDefaultChampions_FirstBalancePass_ReturnsExpectedAdjustedValues()
+        {
+            IReadOnlyList<ChampionDefinition> champions = ChampionCatalog.GetDefaultChampions();
+            ChampionDefinition emberSage = GetChampion(champions, "ember-sage");
+            ChampionDefinition stormcaller = GetChampion(champions, "stormcaller");
+            ChampionDefinition glassArrow = GetChampion(champions, "glass-arrow");
+            ChampionDefinition runeWeaver = GetChampion(champions, "rune-weaver");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(GetAbilityEffect(emberSage, CombatEffectType.Damage).AbilityPower, Is.EqualTo(45));
+                Assert.That(emberSage.Ability.Cooldown, Is.EqualTo(9.0));
+                Assert.That(stormcaller.Health, Is.EqualTo(95));
+                Assert.That(GetAbilityEffect(stormcaller, CombatEffectType.Damage).AbilityPower, Is.EqualTo(40));
+                Assert.That(stormcaller.Ability.Cooldown, Is.EqualTo(9.0));
+                Assert.That(glassArrow.Health, Is.EqualTo(90));
+                Assert.That(glassArrow.Ability.CastTime, Is.EqualTo(1.00));
+                Assert.That(runeWeaver.Health, Is.EqualTo(110));
+                Assert.That(GetAbilityEffect(runeWeaver, CombatEffectType.Shield).AbilityPower, Is.EqualTo(30));
+            });
+        }
+
         private static IEnumerable<CombatEffectType> GetEffectTypes(ChampionDefinition champion)
         {
             foreach (AttackEffect effect in champion.Attack.Effects)
@@ -186,5 +209,11 @@ namespace AutoSim.Domain.Tests.Objects
                 yield return effect.Duration;
             }
         }
+
+        private static ChampionDefinition GetChampion(IReadOnlyList<ChampionDefinition> champions, string id) =>
+            champions.Single(champion => string.Equals(champion.Id, id, StringComparison.Ordinal));
+
+        private static AbilityEffect GetAbilityEffect(ChampionDefinition champion, CombatEffectType type) =>
+            champion.Ability.Effects.Single(effect => effect.Type == type);
     }
 }
