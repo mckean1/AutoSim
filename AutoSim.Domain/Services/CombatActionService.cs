@@ -117,7 +117,7 @@ namespace AutoSim.Domain.Services
             ArgumentNullException.ThrowIfNull(state);
             ArgumentNullException.ThrowIfNull(activeChampions);
 
-            foreach (CombatEffect effect in champion.Definition.Ability.Effects)
+            foreach (AbilityEffect effect in champion.Definition.Ability.Effects)
             {
                 IReadOnlyList<ChampionInstance> targets = CombatTargeting.SelectCandidatePool(
                     champion,

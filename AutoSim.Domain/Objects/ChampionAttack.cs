@@ -8,6 +8,6 @@ namespace AutoSim.Domain.Objects
         /// <summary>
         /// Gets the effects applied when the attack is used.
         /// </summary>
-        public required IReadOnlyList<CombatEffect> Effects { get; init; }
+        public required IReadOnlyList<AttackEffect> Effects { get; init; }
     }
 }

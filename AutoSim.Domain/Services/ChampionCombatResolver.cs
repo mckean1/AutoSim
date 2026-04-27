@@ -23,7 +23,7 @@ namespace AutoSim.Domain.Services
         {
             ArgumentNullException.ThrowIfNull(source);
 
-            ResolveEffects(source, source.Definition.Attack.Effects, allChampions, activeChampions, rng, source.CurrentPower);
+            ResolveAttackEffects(source, source.Definition.Attack.Effects, allChampions, activeChampions, rng);
         }
 
         /// <summary>
@@ -41,22 +41,36 @@ namespace AutoSim.Domain.Services
         {
             ArgumentNullException.ThrowIfNull(source);
 
-            ResolveEffects(source, source.Definition.Ability.Effects, allChampions, activeChampions, rng, 0);
+            ResolveAbilityEffects(source, source.Definition.Ability.Effects, allChampions, activeChampions, rng);
         }
 
-        private static void ResolveEffects(
+        private static void ResolveAttackEffects(
             ChampionInstance source,
-            IEnumerable<CombatEffect> effects,
+            IEnumerable<AttackEffect> effects,
             IEnumerable<ChampionInstance> allChampions,
             IEnumerable<ChampionInstance> activeChampions,
-            IMatchRandom rng,
-            int valueBonus)
+            IMatchRandom rng)
         {
             ArgumentNullException.ThrowIfNull(effects);
 
-            foreach (CombatEffect effect in effects)
+            foreach (AttackEffect effect in effects)
             {
-                CombatEffectResolver.ResolveEffect(source, effect, allChampions, activeChampions, rng, valueBonus);
+                CombatEffectResolver.ResolveAttackEffect(source, effect, allChampions, activeChampions, rng);
+            }
+        }
+
+        private static void ResolveAbilityEffects(
+            ChampionInstance source,
+            IEnumerable<AbilityEffect> effects,
+            IEnumerable<ChampionInstance> allChampions,
+            IEnumerable<ChampionInstance> activeChampions,
+            IMatchRandom rng)
+        {
+            ArgumentNullException.ThrowIfNull(effects);
+
+            foreach (AbilityEffect effect in effects)
+            {
+                CombatEffectResolver.ResolveAbilityEffect(source, effect, allChampions, activeChampions, rng);
             }
         }
     }

@@ -3,19 +3,14 @@ using AutoSim.Domain.Enums;
 namespace AutoSim.Domain.Objects
 {
     /// <summary>
-    /// Defines a combat effect and its target rules.
+    /// Defines a basic attack effect and its target rules.
     /// </summary>
-    public sealed record CombatEffect
+    public sealed record AttackEffect
     {
         /// <summary>
         /// Gets the effect type.
         /// </summary>
         public required CombatEffectType Type { get; init; }
-
-        /// <summary>
-        /// Gets the effect value.
-        /// </summary>
-        public required int Value { get; init; }
 
         /// <summary>
         /// Gets the target mode used to build the candidate pool.

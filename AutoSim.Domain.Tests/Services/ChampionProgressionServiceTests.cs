@@ -37,7 +37,7 @@ namespace AutoSim.Domain.Tests.Services
             int expectedLevel)
         {
             ChampionProgressionService service = new(new RoundSettings());
-            ChampionInstance champion = TestChampionFactory.CreateInstance(health: 100, power: 10);
+            ChampionInstance champion = TestChampionFactory.CreateInstance(health: 100, attackPower: 10);
 
             service.AddExperience(champion, experience);
 
@@ -48,7 +48,7 @@ namespace AutoSim.Domain.Tests.Services
         public void AddExperience_LargeAward_GainsMultipleLevelsButDoesNotExceedMaxLevel()
         {
             ChampionProgressionService service = new(new RoundSettings());
-            ChampionInstance champion = TestChampionFactory.CreateInstance(health: 100, power: 10);
+            ChampionInstance champion = TestChampionFactory.CreateInstance(health: 100, attackPower: 10);
             champion.CurrentHealth = 50;
 
             service.AddExperience(champion, 10000);
@@ -58,7 +58,7 @@ namespace AutoSim.Domain.Tests.Services
                 Assert.That(champion.Level, Is.EqualTo(10));
                 Assert.That(champion.MaximumHealth, Is.EqualTo(190));
                 Assert.That(champion.CurrentHealth, Is.EqualTo(140));
-                Assert.That(champion.CurrentPower, Is.EqualTo(28));
+                Assert.That(champion.CurrentAttackPower, Is.EqualTo(28));
             });
         }
 

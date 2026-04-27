@@ -28,6 +28,6 @@ namespace AutoSim.Domain.Objects
         /// <summary>
         /// Gets the effects applied when the ability is used.
         /// </summary>
-        public required IReadOnlyList<CombatEffect> Effects { get; init; }
+        public required IReadOnlyList<AbilityEffect> Effects { get; init; }
     }
 }

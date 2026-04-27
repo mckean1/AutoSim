@@ -9,22 +9,22 @@ namespace AutoSim.Domain.Tests
             string playerId = "player-one",
             FormationPosition defaultPosition = FormationPosition.Frontline,
             int health = 1000,
-            int power = 0,
+            int attackPower = 0,
             double attackSpeed = 1.0,
             double abilityCooldown = 5.0,
             double abilityCastTime = 0.5,
-            IReadOnlyList<CombatEffect>? attackEffects = null,
-            IReadOnlyList<CombatEffect>? abilityCombatEffects = null)
+            IReadOnlyList<AttackEffect>? attackEffects = null,
+            IReadOnlyList<AbilityEffect>? abilityEffects = null)
         {
             ChampionDefinition definition = CreateDefinition(
                 defaultPosition,
                 health,
-                power,
+                attackPower,
                 attackSpeed,
                 abilityCooldown,
                 abilityCastTime,
                 attackEffects,
-                abilityCombatEffects);
+                abilityEffects);
 
             ChampionInstance champion = ChampionInstanceFactory.Create(definition, playerId);
             champion.TeamSide = string.Equals(playerId, "player-two", StringComparison.Ordinal)
@@ -38,12 +38,12 @@ namespace AutoSim.Domain.Tests
         public static ChampionDefinition CreateDefinition(
             FormationPosition defaultPosition = FormationPosition.Frontline,
             int health = 1000,
-            int power = 100,
+            int attackPower = 100,
             double attackSpeed = 1.0,
             double abilityCooldown = 5.0,
             double abilityCastTime = 0.5,
-            IReadOnlyList<CombatEffect>? attackEffects = null,
-            IReadOnlyList<CombatEffect>? abilityCombatEffects = null) =>
+            IReadOnlyList<AttackEffect>? attackEffects = null,
+            IReadOnlyList<AbilityEffect>? abilityEffects = null) =>
             new ChampionDefinition
             {
                 Id = $"test-{Guid.NewGuid():N}",
@@ -51,7 +51,7 @@ namespace AutoSim.Domain.Tests
                 Role = ChampionRole.Fighter,
                 DefaultPosition = defaultPosition,
                 Health = health,
-                Power = power,
+                AttackPower = attackPower,
                 AttackSpeed = attackSpeed,
                 Attack = new ChampionAttack
                 {
@@ -63,20 +63,33 @@ namespace AutoSim.Domain.Tests
                     Name = "Test Ability",
                     Cooldown = abilityCooldown,
                     CastTime = abilityCastTime,
-                    Effects = abilityCombatEffects ?? []
+                    Effects = abilityEffects ?? []
                 }
             };
 
-        public static CombatEffect CreateEffect(
+        public static AttackEffect CreateAttackEffect(
             CombatEffectType type,
-            int value,
             TargetMode targetMode,
             TargetScope targetScope,
             double? duration = null) =>
-            new CombatEffect
+            new AttackEffect
             {
                 Type = type,
-                Value = value,
+                TargetMode = targetMode,
+                TargetScope = targetScope,
+                Duration = duration
+            };
+
+        public static AbilityEffect CreateAbilityEffect(
+            CombatEffectType type,
+            int abilityPower,
+            TargetMode targetMode,
+            TargetScope targetScope,
+            double? duration = null) =>
+            new AbilityEffect
+            {
+                Type = type,
+                AbilityPower = abilityPower,
                 TargetMode = targetMode,
                 TargetScope = targetScope,
                 Duration = duration

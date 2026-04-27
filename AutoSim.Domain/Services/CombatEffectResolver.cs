@@ -12,20 +12,19 @@ namespace AutoSim.Domain.Services
         private const double DefaultShieldDuration = 5.0;
 
         /// <summary>
-        /// Resolves a combat effect from a source champion.
+        /// Resolves an attack effect from a source champion.
         /// </summary>
         /// <param name="source">The champion applying the effect.</param>
-        /// <param name="effect">The effect to resolve.</param>
+        /// <param name="effect">The attack effect to resolve.</param>
         /// <param name="allChampions">All champions in the match.</param>
         /// <param name="activeChampions">Champions currently participating in the active fight.</param>
         /// <param name="rng">The seeded match random source.</param>
-        public static void ResolveEffect(
+        public static void ResolveAttackEffect(
             ChampionInstance source,
-            CombatEffect effect,
+            AttackEffect effect,
             IEnumerable<ChampionInstance> allChampions,
             IEnumerable<ChampionInstance> activeChampions,
-            IMatchRandom rng,
-            int valueBonus = 0)
+            IMatchRandom rng)
         {
             ArgumentNullException.ThrowIfNull(source);
             ArgumentNullException.ThrowIfNull(effect);
@@ -42,29 +41,65 @@ namespace AutoSim.Domain.Services
 
             foreach (ChampionInstance target in targets)
             {
-                ApplyEffect(effect, target, valueBonus);
+                ApplyEffect(effect.Type, source.CurrentAttackPower, effect.Duration, target);
             }
         }
 
-        private static void ApplyEffect(CombatEffect effect, ChampionInstance target, int valueBonus)
+        /// <summary>
+        /// Resolves an ability effect from a source champion.
+        /// </summary>
+        /// <param name="source">The champion applying the effect.</param>
+        /// <param name="effect">The ability effect to resolve.</param>
+        /// <param name="allChampions">All champions in the match.</param>
+        /// <param name="activeChampions">Champions currently participating in the active fight.</param>
+        /// <param name="rng">The seeded match random source.</param>
+        public static void ResolveAbilityEffect(
+            ChampionInstance source,
+            AbilityEffect effect,
+            IEnumerable<ChampionInstance> allChampions,
+            IEnumerable<ChampionInstance> activeChampions,
+            IMatchRandom rng)
         {
-            int value = effect.Value + valueBonus;
+            ArgumentNullException.ThrowIfNull(source);
+            ArgumentNullException.ThrowIfNull(effect);
+            ArgumentNullException.ThrowIfNull(allChampions);
+            ArgumentNullException.ThrowIfNull(activeChampions);
+            ArgumentNullException.ThrowIfNull(rng);
 
-            switch (effect.Type)
+            IReadOnlyList<ChampionInstance> targets = CombatTargeting.SelectTargets(
+                source,
+                effect,
+                allChampions,
+                activeChampions,
+                rng);
+
+            foreach (ChampionInstance target in targets)
+            {
+                ApplyEffect(effect.Type, effect.AbilityPower, effect.Duration, target);
+            }
+        }
+
+        private static void ApplyEffect(
+            CombatEffectType type,
+            int amount,
+            double? duration,
+            ChampionInstance target)
+        {
+            switch (type)
             {
                 case CombatEffectType.Damage:
-                    CombatEffectApplicator.ApplyDamage(target, value);
+                    CombatEffectApplicator.ApplyDamage(target, amount);
                     break;
                 case CombatEffectType.Heal:
-                    CombatEffectApplicator.ApplyHeal(target, value);
+                    CombatEffectApplicator.ApplyHeal(target, amount);
                     break;
                 case CombatEffectType.Shield:
-                    CombatEffectApplicator.ApplyShield(target, value, effect.Duration ?? DefaultShieldDuration);
+                    CombatEffectApplicator.ApplyShield(target, amount, duration ?? DefaultShieldDuration);
                     break;
                 default:
                     throw new ArgumentOutOfRangeException(
-                        nameof(effect),
-                        effect.Type,
+                        nameof(type),
+                        type,
                         "Unsupported combat effect type.");
             }
         }

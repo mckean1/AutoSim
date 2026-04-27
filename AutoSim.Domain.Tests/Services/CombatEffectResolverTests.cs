@@ -7,11 +7,11 @@ namespace AutoSim.Domain.Tests.Services
     internal sealed class CombatEffectResolverTests
     {
         [Test]
-        public void ResolveEffect_DamageEffect_DamagesSelectedTarget()
+        public void ResolveAbilityEffect_DamageEffect_DamagesSelectedTarget()
         {
             ChampionInstance source = TestChampionFactory.CreateInstance("player-one");
             ChampionInstance enemy = TestChampionFactory.CreateInstance("player-two");
-            CombatEffect effect = CreateEffect(CombatEffectType.Damage, 150, TargetMode.EnemyAny, TargetScope.One);
+            AbilityEffect effect = CreateEffect(CombatEffectType.Damage, 150, TargetMode.EnemyAny, TargetScope.One);
 
             Resolve(source, effect, [source, enemy], [source, enemy]);
 
@@ -19,12 +19,12 @@ namespace AutoSim.Domain.Tests.Services
         }
 
         [Test]
-        public void ResolveEffect_HealEffect_HealsSelectedTarget()
+        public void ResolveAbilityEffect_HealEffect_HealsSelectedTarget()
         {
             ChampionInstance source = TestChampionFactory.CreateInstance("player-one");
             ChampionInstance ally = TestChampionFactory.CreateInstance("player-one", FormationPosition.Backline);
             ally.CurrentHealth = 700;
-            CombatEffect effect = CreateEffect(CombatEffectType.Heal, 150, TargetMode.AllyBackline, TargetScope.One);
+            AbilityEffect effect = CreateEffect(CombatEffectType.Heal, 150, TargetMode.AllyBackline, TargetScope.One);
 
             Resolve(source, effect, [source, ally], [source, ally]);
 
@@ -32,10 +32,10 @@ namespace AutoSim.Domain.Tests.Services
         }
 
         [Test]
-        public void ResolveEffect_ShieldEffect_AddsShield()
+        public void ResolveAbilityEffect_ShieldEffect_AddsShield()
         {
             ChampionInstance source = TestChampionFactory.CreateInstance("player-one");
-            CombatEffect effect = CreateEffect(CombatEffectType.Shield, 120, TargetMode.Self, TargetScope.One, 4.0);
+            AbilityEffect effect = CreateEffect(CombatEffectType.Shield, 120, TargetMode.Self, TargetScope.One, 4.0);
 
             Resolve(source, effect, [source], [source]);
 
@@ -43,10 +43,10 @@ namespace AutoSim.Domain.Tests.Services
         }
 
         [Test]
-        public void ResolveEffect_ShieldDurationNull_UsesDefaultFiveSecondDuration()
+        public void ResolveAbilityEffect_ShieldDurationNull_UsesDefaultFiveSecondDuration()
         {
             ChampionInstance source = TestChampionFactory.CreateInstance("player-one");
-            CombatEffect effect = CreateEffect(CombatEffectType.Shield, 120, TargetMode.Self, TargetScope.One);
+            AbilityEffect effect = CreateEffect(CombatEffectType.Shield, 120, TargetMode.Self, TargetScope.One);
 
             Resolve(source, effect, [source], [source]);
 
@@ -54,10 +54,10 @@ namespace AutoSim.Domain.Tests.Services
         }
 
         [Test]
-        public void ResolveEffect_ShieldDurationProvided_UsesExplicitDuration()
+        public void ResolveAbilityEffect_ShieldDurationProvided_UsesExplicitDuration()
         {
             ChampionInstance source = TestChampionFactory.CreateInstance("player-one");
-            CombatEffect effect = CreateEffect(CombatEffectType.Shield, 120, TargetMode.Self, TargetScope.One, 7.5);
+            AbilityEffect effect = CreateEffect(CombatEffectType.Shield, 120, TargetMode.Self, TargetScope.One, 7.5);
 
             Resolve(source, effect, [source], [source]);
 
@@ -65,12 +65,12 @@ namespace AutoSim.Domain.Tests.Services
         }
 
         [Test]
-        public void ResolveEffect_TargetScopeAll_AppliesEffectToEverySelectedTarget()
+        public void ResolveAbilityEffect_TargetScopeAll_AppliesEffectToEverySelectedTarget()
         {
             ChampionInstance source = TestChampionFactory.CreateInstance("player-one");
             ChampionInstance firstEnemy = TestChampionFactory.CreateInstance("player-two", FormationPosition.Frontline);
             ChampionInstance secondEnemy = TestChampionFactory.CreateInstance("player-two", FormationPosition.Backline);
-            CombatEffect effect = CreateEffect(CombatEffectType.Damage, 100, TargetMode.EnemyAny, TargetScope.All);
+            AbilityEffect effect = CreateEffect(CombatEffectType.Damage, 100, TargetMode.EnemyAny, TargetScope.All);
 
             Resolve(source, effect, [source, firstEnemy, secondEnemy], [source, firstEnemy, secondEnemy]);
 
@@ -78,11 +78,11 @@ namespace AutoSim.Domain.Tests.Services
         }
 
         [Test]
-        public void ResolveEffect_NoValidTargets_DoesNothing()
+        public void ResolveAbilityEffect_NoValidTargets_DoesNothing()
         {
             ChampionInstance source = TestChampionFactory.CreateInstance("player-one");
             ChampionInstance ally = TestChampionFactory.CreateInstance("player-one", FormationPosition.Backline);
-            CombatEffect effect = CreateEffect(CombatEffectType.Damage, 100, TargetMode.EnemyAny, TargetScope.One);
+            AbilityEffect effect = CreateEffect(CombatEffectType.Damage, 100, TargetMode.EnemyAny, TargetScope.One);
 
             Resolve(source, effect, [source, ally], [source, ally]);
 
@@ -90,12 +90,12 @@ namespace AutoSim.Domain.Tests.Services
         }
 
         [Test]
-        public void ResolveEffect_DeadChampionSelectedByMode_DoesNotApplyEffect()
+        public void ResolveAbilityEffect_DeadChampionSelectedByMode_DoesNotApplyEffect()
         {
             ChampionInstance source = TestChampionFactory.CreateInstance("player-one");
             ChampionInstance enemy = TestChampionFactory.CreateInstance("player-two");
             enemy.CurrentHealth = 0;
-            CombatEffect effect = CreateEffect(CombatEffectType.Heal, 100, TargetMode.GlobalEnemy, TargetScope.All);
+            AbilityEffect effect = CreateEffect(CombatEffectType.Heal, 100, TargetMode.GlobalEnemy, TargetScope.All);
 
             Resolve(source, effect, [source, enemy], [source]);
 
@@ -104,17 +104,17 @@ namespace AutoSim.Domain.Tests.Services
 
         private static void Resolve(
             ChampionInstance source,
-            CombatEffect effect,
+            AbilityEffect effect,
             IReadOnlyList<ChampionInstance> allChampions,
             IReadOnlyList<ChampionInstance> activeChampions) =>
-            CombatEffectResolver.ResolveEffect(source, effect, allChampions, activeChampions, new QueueMatchRandom(0));
+            CombatEffectResolver.ResolveAbilityEffect(source, effect, allChampions, activeChampions, new QueueMatchRandom(0));
 
-        private static CombatEffect CreateEffect(
+        private static AbilityEffect CreateEffect(
             CombatEffectType type,
-            int value,
+            int abilityPower,
             TargetMode targetMode,
             TargetScope targetScope,
             double? duration = null) =>
-            TestChampionFactory.CreateEffect(type, value, targetMode, targetScope, duration);
+            TestChampionFactory.CreateAbilityEffect(type, abilityPower, targetMode, targetScope, duration);
     }
 }

@@ -113,7 +113,7 @@ namespace AutoSim.Domain.Services
                 champion.CurrentHealth = Math.Min(
                     champion.MaximumHealth,
                     champion.CurrentHealth + _settings.HealthPerLevel);
-                champion.CurrentPower += _settings.PowerPerLevel;
+                champion.CurrentAttackPower += _settings.PowerPerLevel;
             }
         }
 

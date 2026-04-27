@@ -26,7 +26,7 @@ namespace AutoSim.Domain.Objects
             Level = 1;
             MaximumHealth = definition.Health;
             CurrentHealth = MaximumHealth;
-            CurrentPower = definition.Power;
+            CurrentAttackPower = definition.AttackPower;
             AttackTimer = definition.AttackSpeed > 0 ? 1.0 / definition.AttackSpeed : 0;
             AbilityCooldown = definition.Ability.Cooldown;
         }
@@ -122,9 +122,9 @@ namespace AutoSim.Domain.Objects
         public int CurrentHealth { get; set; }
 
         /// <summary>
-        /// Gets or sets the current runtime power.
+        /// Gets or sets the current runtime basic attack strength.
         /// </summary>
-        public int CurrentPower { get; set; }
+        public int CurrentAttackPower { get; set; }
 
         /// <summary>
         /// Gets or sets the remaining basic attack timer.

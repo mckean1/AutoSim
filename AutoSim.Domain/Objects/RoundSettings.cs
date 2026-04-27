@@ -91,7 +91,7 @@ namespace AutoSim.Domain.Objects
         public int HealthPerLevel { get; init; } = 10;
 
         /// <summary>
-        /// Gets power gained per level.
+        /// Gets AttackPower gained per level.
         /// </summary>
         public int PowerPerLevel { get; init; } = 2;
 

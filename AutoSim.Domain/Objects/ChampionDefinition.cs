@@ -33,9 +33,9 @@ namespace AutoSim.Domain.Objects
         public required int Health { get; init; }
 
         /// <summary>
-        /// Gets the champion's power value.
+        /// Gets the champion's base basic attack strength.
         /// </summary>
-        public required int Power { get; init; }
+        public required int AttackPower { get; init; }
 
         /// <summary>
         /// Gets the champion's attacks per second.

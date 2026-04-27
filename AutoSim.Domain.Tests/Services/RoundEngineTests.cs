@@ -12,7 +12,7 @@ namespace AutoSim.Domain.Tests.Services
             ChampionDefinition definition = TestChampionFactory.CreateDefinition(
                 FormationPosition.Backline,
                 health: 900,
-                power: 123);
+                attackPower: 123);
             RoundState state = CreateState([definition], [CreateDefinition()]);
             ChampionInstance champion = state.BlueTeam.Champions[0];
 
@@ -21,7 +21,7 @@ namespace AutoSim.Domain.Tests.Services
                 Assert.That(champion.Level, Is.EqualTo(1));
                 Assert.That(champion.MaximumHealth, Is.EqualTo(900));
                 Assert.That(champion.CurrentHealth, Is.EqualTo(champion.MaximumHealth));
-                Assert.That(champion.CurrentPower, Is.EqualTo(123));
+                Assert.That(champion.CurrentAttackPower, Is.EqualTo(123));
                 Assert.That(champion.Position, Is.EqualTo(FormationPosition.Backline));
                 Assert.That(champion.Intent, Is.EqualTo(ChampionIntent.Laning));
                 Assert.That(champion.TeamSide, Is.EqualTo(TeamSide.Blue));
@@ -44,7 +44,7 @@ namespace AutoSim.Domain.Tests.Services
                 Assert.That(champion.Level, Is.EqualTo(10));
                 Assert.That(champion.MaximumHealth, Is.EqualTo(190));
                 Assert.That(champion.CurrentHealth, Is.EqualTo(190));
-                Assert.That(champion.CurrentPower, Is.EqualTo(18));
+                Assert.That(champion.CurrentAttackPower, Is.EqualTo(18));
             });
         }
 
@@ -142,9 +142,9 @@ namespace AutoSim.Domain.Tests.Services
         [Test]
         public void Tick_Retreating_CancelsCastPreventsActionsAndReturnsToLaningAtFullHealth()
         {
-            CombatEffect damage = CreateEffect(CombatEffectType.Damage, 100, TargetMode.EnemyAny, TargetScope.One);
+            AbilityEffect damage = CreateAbilityEffect(CombatEffectType.Damage, 100, TargetMode.EnemyAny, TargetScope.One);
             RoundState state = CreateState(
-                [CreateDefinition(abilityCombatEffects: [damage])],
+                [CreateDefinition(abilityEffects: [damage])],
                 [CreateDefinition()]);
             ChampionInstance blue = state.BlueTeam.Champions[0];
             ChampionInstance red = state.RedTeam.Champions[0];
@@ -292,7 +292,7 @@ namespace AutoSim.Domain.Tests.Services
             source.CurrentFightPosition = 0;
             enemy.CurrentFightPosition = 0;
             enemy.LanePosition = 5;
-            CombatEffect effect = CreateEffect(CombatEffectType.Damage, 1, TargetMode.EnemyBackline, TargetScope.All);
+            AbilityEffect effect = CreateAbilityEffect(CombatEffectType.Damage, 1, TargetMode.EnemyBackline, TargetScope.All);
 
             IReadOnlyList<ChampionInstance> targets = CombatTargeting.SelectTargets(
                 source,
@@ -372,10 +372,10 @@ namespace AutoSim.Domain.Tests.Services
         [Test]
         public void Tick_Combat_AttacksAndAbilitiesUseIndependentTimersAndCastingRules()
         {
-            CombatEffect attackDamage = CreateEffect(CombatEffectType.Damage, 10, TargetMode.EnemyAny, TargetScope.One);
-            CombatEffect abilityDamage = CreateEffect(CombatEffectType.Damage, 100, TargetMode.EnemyAny, TargetScope.One);
+            AttackEffect attackDamage = CreateAttackEffect(CombatEffectType.Damage, TargetMode.EnemyAny, TargetScope.One);
+            AbilityEffect abilityDamage = CreateAbilityEffect(CombatEffectType.Damage, 100, TargetMode.EnemyAny, TargetScope.One);
             RoundState state = CreateState(
-                [CreateDefinition(attackEffects: [attackDamage], abilityCombatEffects: [abilityDamage], abilityCastTime: 0.2)],
+                [CreateDefinition(attackEffects: [attackDamage], abilityEffects: [abilityDamage], abilityCastTime: 0.2)],
                 [CreateDefinition()]);
             ChampionInstance blue = state.BlueTeam.Champions[0];
             ChampionInstance red = state.RedTeam.Champions[0];
@@ -405,10 +405,10 @@ namespace AutoSim.Domain.Tests.Services
         [Test]
         public void Tick_Combat_ChampionCanMoveAndTakeDamageWhileCasting()
         {
-            CombatEffect blueAbility = CreateEffect(CombatEffectType.Damage, 50, TargetMode.EnemyAny, TargetScope.One);
-            CombatEffect redAttack = CreateEffect(CombatEffectType.Damage, 20, TargetMode.EnemyAny, TargetScope.One);
+            AbilityEffect blueAbility = CreateAbilityEffect(CombatEffectType.Damage, 50, TargetMode.EnemyAny, TargetScope.One);
+            AttackEffect redAttack = CreateAttackEffect(CombatEffectType.Damage, TargetMode.EnemyAny, TargetScope.One);
             RoundState state = CreateState(
-                [CreateDefinition(abilityCombatEffects: [blueAbility], abilityCastTime: 1.0)],
+                [CreateDefinition(abilityEffects: [blueAbility], abilityCastTime: 1.0)],
                 [CreateDefinition(attackEffects: [redAttack])]);
             ChampionInstance blue = state.BlueTeam.Champions[0];
             ChampionInstance red = state.RedTeam.Champions[0];
@@ -432,8 +432,8 @@ namespace AutoSim.Domain.Tests.Services
         [Test]
         public void Tick_DeathAndRespawn_AppliesDeathRulesRewardsAndRespawnRules()
         {
-            CombatEffect lethal = CreateEffect(CombatEffectType.Damage, 2000, TargetMode.EnemyAny, TargetScope.One);
-            RoundState state = CreateState([CreateDefinition(attackEffects: [lethal])], [CreateDefinition()]);
+            AttackEffect lethal = CreateAttackEffect(CombatEffectType.Damage, TargetMode.EnemyAny, TargetScope.One);
+            RoundState state = CreateState([CreateDefinition(attackEffects: [lethal], attackPower: 2000)], [CreateDefinition()]);
             ChampionInstance blue = state.BlueTeam.Champions[0];
             ChampionInstance red = state.RedTeam.Champions[0];
             StartFight(state, blue, red);
@@ -460,7 +460,7 @@ namespace AutoSim.Domain.Tests.Services
             red.Experience = 123;
             red.Level = 3;
             red.MaximumHealth = 1020;
-            red.CurrentPower = 104;
+            red.CurrentAttackPower = 104;
             Tick(state, 10.0);
 
             Assert.Multiple(() =>
@@ -470,7 +470,7 @@ namespace AutoSim.Domain.Tests.Services
                 Assert.That(red.Gold, Is.EqualTo(7));
                 Assert.That(red.Experience, Is.EqualTo(123));
                 Assert.That(red.Level, Is.EqualTo(3));
-                Assert.That(red.CurrentPower, Is.EqualTo(104));
+                Assert.That(red.CurrentAttackPower, Is.EqualTo(104));
                 Assert.That(red.LanePosition, Is.EqualTo(100));
                 Assert.That(red.AbilityCooldown, Is.EqualTo(red.Definition.Ability.Cooldown));
                 Assert.That(red.AttackTimer, Is.EqualTo(1.0 / red.Definition.AttackSpeed));
@@ -543,21 +543,29 @@ namespace AutoSim.Domain.Tests.Services
 
         private static ChampionDefinition CreateDefinition(
             FormationPosition defaultPosition = FormationPosition.Frontline,
-            IReadOnlyList<CombatEffect>? attackEffects = null,
-            IReadOnlyList<CombatEffect>? abilityCombatEffects = null,
+            int attackPower = 100,
+            IReadOnlyList<AttackEffect>? attackEffects = null,
+            IReadOnlyList<AbilityEffect>? abilityEffects = null,
             double abilityCastTime = 0.5) =>
             TestChampionFactory.CreateDefinition(
                 defaultPosition,
+                attackPower: attackPower,
                 attackEffects: attackEffects,
-                abilityCombatEffects: abilityCombatEffects,
+                abilityEffects: abilityEffects,
                 abilityCastTime: abilityCastTime);
 
-        private static CombatEffect CreateEffect(
+        private static AttackEffect CreateAttackEffect(
             CombatEffectType type,
-            int value,
             TargetMode targetMode,
             TargetScope targetScope) =>
-            TestChampionFactory.CreateEffect(type, value, targetMode, targetScope);
+            TestChampionFactory.CreateAttackEffect(type, targetMode, targetScope);
+
+        private static AbilityEffect CreateAbilityEffect(
+            CombatEffectType type,
+            int abilityPower,
+            TargetMode targetMode,
+            TargetScope targetScope) =>
+            TestChampionFactory.CreateAbilityEffect(type, abilityPower, targetMode, targetScope);
 
         private static void StartFight(
             RoundState state,

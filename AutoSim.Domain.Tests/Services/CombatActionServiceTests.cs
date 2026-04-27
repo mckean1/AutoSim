@@ -9,8 +9,8 @@ namespace AutoSim.Domain.Tests.Services
         [Test]
         public void IsAbilityUseful_HealEffect_ReturnsTrueWhenAnyValidAllyIsInjured()
         {
-            CombatEffect heal = CreateEffect(CombatEffectType.Heal, 100, TargetMode.AllyAny, TargetScope.One);
-            ChampionInstance source = TestChampionFactory.CreateInstance("blue", abilityCombatEffects: [heal]);
+            AbilityEffect heal = CreateEffect(CombatEffectType.Heal, 100, TargetMode.AllyAny, TargetScope.One);
+            ChampionInstance source = TestChampionFactory.CreateInstance("blue", abilityEffects: [heal]);
             ChampionInstance injuredAlly = TestChampionFactory.CreateInstance("blue-ally");
             injuredAlly.TeamSide = TeamSide.Blue;
             injuredAlly.CurrentHealth = injuredAlly.MaximumHealth - 1;
@@ -24,8 +24,8 @@ namespace AutoSim.Domain.Tests.Services
         [Test]
         public void IsAbilityUseful_HealEffect_ReturnsFalseWhenAllValidAlliesAreFullHealth()
         {
-            CombatEffect heal = CreateEffect(CombatEffectType.Heal, 100, TargetMode.AllyAny, TargetScope.One);
-            ChampionInstance source = TestChampionFactory.CreateInstance("blue", abilityCombatEffects: [heal]);
+            AbilityEffect heal = CreateEffect(CombatEffectType.Heal, 100, TargetMode.AllyAny, TargetScope.One);
+            ChampionInstance source = TestChampionFactory.CreateInstance("blue", abilityEffects: [heal]);
             ChampionInstance ally = TestChampionFactory.CreateInstance("blue-ally");
             ally.TeamSide = TeamSide.Blue;
             RoundState state = CreateState([source, ally], []);
@@ -38,8 +38,8 @@ namespace AutoSim.Domain.Tests.Services
         [Test]
         public void IsAbilityUseful_DamageEffect_ReturnsTrueWhenAnyValidTargetExists()
         {
-            CombatEffect damage = CreateEffect(CombatEffectType.Damage, 100, TargetMode.EnemyAny, TargetScope.One);
-            ChampionInstance source = TestChampionFactory.CreateInstance("blue", abilityCombatEffects: [damage]);
+            AbilityEffect damage = CreateEffect(CombatEffectType.Damage, 100, TargetMode.EnemyAny, TargetScope.One);
+            ChampionInstance source = TestChampionFactory.CreateInstance("blue", abilityEffects: [damage]);
             ChampionInstance enemy = TestChampionFactory.CreateInstance("red");
             RoundState state = CreateState([source], [enemy]);
 
@@ -51,8 +51,8 @@ namespace AutoSim.Domain.Tests.Services
         [Test]
         public void IsAbilityUseful_ShieldEffect_ReturnsTrueWhenAnyValidTargetExists()
         {
-            CombatEffect shield = CreateEffect(CombatEffectType.Shield, 100, TargetMode.AllyAny, TargetScope.One);
-            ChampionInstance source = TestChampionFactory.CreateInstance("blue", abilityCombatEffects: [shield]);
+            AbilityEffect shield = CreateEffect(CombatEffectType.Shield, 100, TargetMode.AllyAny, TargetScope.One);
+            ChampionInstance source = TestChampionFactory.CreateInstance("blue", abilityEffects: [shield]);
             RoundState state = CreateState([source], []);
 
             bool isUseful = CombatActionService.IsAbilityUseful(source, state, [source]);
@@ -63,9 +63,9 @@ namespace AutoSim.Domain.Tests.Services
         [Test]
         public void IsAbilityUseful_HybridAbility_ReturnsTrueWhenAnyEffectIsUseful()
         {
-            CombatEffect heal = CreateEffect(CombatEffectType.Heal, 100, TargetMode.AllyAny, TargetScope.One);
-            CombatEffect damage = CreateEffect(CombatEffectType.Damage, 100, TargetMode.EnemyAny, TargetScope.One);
-            ChampionInstance source = TestChampionFactory.CreateInstance("blue", abilityCombatEffects: [heal, damage]);
+            AbilityEffect heal = CreateEffect(CombatEffectType.Heal, 100, TargetMode.AllyAny, TargetScope.One);
+            AbilityEffect damage = CreateEffect(CombatEffectType.Damage, 100, TargetMode.EnemyAny, TargetScope.One);
+            ChampionInstance source = TestChampionFactory.CreateInstance("blue", abilityEffects: [heal, damage]);
             ChampionInstance enemy = TestChampionFactory.CreateInstance("red");
             RoundState state = CreateState([source], [enemy]);
 
@@ -77,8 +77,8 @@ namespace AutoSim.Domain.Tests.Services
         [Test]
         public void IsAbilityUseful_TargetScopeOne_DoesNotConsumeRoundRandom()
         {
-            CombatEffect heal = CreateEffect(CombatEffectType.Heal, 100, TargetMode.AllyAny, TargetScope.One);
-            ChampionInstance source = TestChampionFactory.CreateInstance("blue", abilityCombatEffects: [heal]);
+            AbilityEffect heal = CreateEffect(CombatEffectType.Heal, 100, TargetMode.AllyAny, TargetScope.One);
+            ChampionInstance source = TestChampionFactory.CreateInstance("blue", abilityEffects: [heal]);
             ChampionInstance fullAlly = TestChampionFactory.CreateInstance("blue-full");
             ChampionInstance injuredAlly = TestChampionFactory.CreateInstance("blue-injured");
             fullAlly.TeamSide = TeamSide.Blue;
@@ -110,11 +110,11 @@ namespace AutoSim.Domain.Tests.Services
                 new CountingMatchRandom(),
                 new RoundSettings());
 
-        private static CombatEffect CreateEffect(
+        private static AbilityEffect CreateEffect(
             CombatEffectType type,
-            int value,
+            int abilityPower,
             TargetMode targetMode,
             TargetScope targetScope) =>
-            TestChampionFactory.CreateEffect(type, value, targetMode, targetScope);
+            TestChampionFactory.CreateAbilityEffect(type, abilityPower, targetMode, targetScope);
     }
 }

@@ -22,16 +22,15 @@ namespace AutoSim.Domain.Objects
                 Role = ChampionRole.Fighter,
                 DefaultPosition = FormationPosition.Frontline,
                 Health = 1200,
-                Power = 80,
+                AttackPower = 80,
                 AttackSpeed = 0.8,
                 Attack = new ChampionAttack
                 {
                     Effects =
                     [
-                        new CombatEffect
+                        new AttackEffect
                         {
                             Type = CombatEffectType.Damage,
-                            Value = 80,
                             TargetMode = TargetMode.EnemyFrontline,
                             TargetScope = TargetScope.One
                         }
@@ -45,17 +44,17 @@ namespace AutoSim.Domain.Objects
                     CastTime = 0.75,
                     Effects =
                     [
-                        new CombatEffect
+                        new AbilityEffect
                         {
                             Type = CombatEffectType.Damage,
-                            Value = 140,
+                            AbilityPower = 140,
                             TargetMode = TargetMode.EnemyFrontline,
                             TargetScope = TargetScope.One
                         },
-                        new CombatEffect
+                        new AbilityEffect
                         {
                             Type = CombatEffectType.Shield,
-                            Value = 180,
+                            AbilityPower = 180,
                             TargetMode = TargetMode.Self,
                             TargetScope = TargetScope.One,
                             Duration = StandardShieldDuration
@@ -70,16 +69,15 @@ namespace AutoSim.Domain.Objects
                 Role = ChampionRole.Marksman,
                 DefaultPosition = FormationPosition.Backline,
                 Health = 760,
-                Power = 120,
+                AttackPower = 120,
                 AttackSpeed = 1.25,
                 Attack = new ChampionAttack
                 {
                     Effects =
                     [
-                        new CombatEffect
+                        new AttackEffect
                         {
                             Type = CombatEffectType.Damage,
-                            Value = 95,
                             TargetMode = TargetMode.EnemyFrontline,
                             TargetScope = TargetScope.One
                         }
@@ -93,10 +91,10 @@ namespace AutoSim.Domain.Objects
                     CastTime = 0.5,
                     Effects =
                     [
-                        new CombatEffect
+                        new AbilityEffect
                         {
                             Type = CombatEffectType.Damage,
-                            Value = 180,
+                            AbilityPower = 180,
                             TargetMode = TargetMode.EnemyBackline,
                             TargetScope = TargetScope.One
                         }
@@ -110,16 +108,15 @@ namespace AutoSim.Domain.Objects
                 Role = ChampionRole.Mage,
                 DefaultPosition = FormationPosition.Backline,
                 Health = 700,
-                Power = 150,
+                AttackPower = 150,
                 AttackSpeed = 0.7,
                 Attack = new ChampionAttack
                 {
                     Effects =
                     [
-                        new CombatEffect
+                        new AttackEffect
                         {
                             Type = CombatEffectType.Damage,
-                            Value = 70,
                             TargetMode = TargetMode.EnemyFrontline,
                             TargetScope = TargetScope.One
                         }
@@ -133,10 +130,10 @@ namespace AutoSim.Domain.Objects
                     CastTime = 1.25,
                     Effects =
                     [
-                        new CombatEffect
+                        new AbilityEffect
                         {
                             Type = CombatEffectType.Damage,
-                            Value = 110,
+                            AbilityPower = 110,
                             TargetMode = TargetMode.EnemyAny,
                             TargetScope = TargetScope.All
                         }
@@ -150,16 +147,15 @@ namespace AutoSim.Domain.Objects
                 Role = ChampionRole.Support,
                 DefaultPosition = FormationPosition.Backline,
                 Health = 820,
-                Power = 60,
+                AttackPower = 60,
                 AttackSpeed = 0.85,
                 Attack = new ChampionAttack
                 {
                     Effects =
                     [
-                        new CombatEffect
+                        new AttackEffect
                         {
                             Type = CombatEffectType.Damage,
-                            Value = 55,
                             TargetMode = TargetMode.EnemyFrontline,
                             TargetScope = TargetScope.One
                         }
@@ -173,17 +169,17 @@ namespace AutoSim.Domain.Objects
                     CastTime = 0.75,
                     Effects =
                     [
-                        new CombatEffect
+                        new AbilityEffect
                         {
                             Type = CombatEffectType.Heal,
-                            Value = 150,
+                            AbilityPower = 150,
                             TargetMode = TargetMode.AllyAny,
                             TargetScope = TargetScope.One
                         },
-                        new CombatEffect
+                        new AbilityEffect
                         {
                             Type = CombatEffectType.Shield,
-                            Value = 120,
+                            AbilityPower = 120,
                             TargetMode = TargetMode.AllyFrontline,
                             TargetScope = TargetScope.One,
                             Duration = StandardShieldDuration

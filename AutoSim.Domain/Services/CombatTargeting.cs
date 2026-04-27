@@ -13,31 +13,97 @@ namespace AutoSim.Domain.Services
         /// Selects the targets affected by a combat effect.
         /// </summary>
         /// <param name="source">The champion applying the effect.</param>
-        /// <param name="effect">The effect being applied.</param>
+        /// <param name="effect">The attack effect being applied.</param>
         /// <param name="allChampions">All living and inactive champions in the match.</param>
         /// <param name="activeChampions">Champions currently participating in the active fight.</param>
         /// <param name="rng">The seeded match random source.</param>
         /// <returns>The selected living targets.</returns>
         public static IReadOnlyList<ChampionInstance> SelectTargets(
             ChampionInstance source,
-            CombatEffect effect,
+            AttackEffect effect,
             IEnumerable<ChampionInstance> allChampions,
             IEnumerable<ChampionInstance> activeChampions,
             IMatchRandom rng)
         {
-            ArgumentNullException.ThrowIfNull(source);
             ArgumentNullException.ThrowIfNull(effect);
-            ArgumentNullException.ThrowIfNull(allChampions);
-            ArgumentNullException.ThrowIfNull(activeChampions);
+
+            return SelectTargets(source, effect.TargetMode, effect.TargetScope, allChampions, activeChampions, rng);
+        }
+
+        /// <summary>
+        /// Selects the targets affected by an ability effect.
+        /// </summary>
+        /// <param name="source">The champion applying the effect.</param>
+        /// <param name="effect">The ability effect being applied.</param>
+        /// <param name="allChampions">All living and inactive champions in the match.</param>
+        /// <param name="activeChampions">Champions currently participating in the active fight.</param>
+        /// <param name="rng">The seeded match random source.</param>
+        /// <returns>The selected living targets.</returns>
+        public static IReadOnlyList<ChampionInstance> SelectTargets(
+            ChampionInstance source,
+            AbilityEffect effect,
+            IEnumerable<ChampionInstance> allChampions,
+            IEnumerable<ChampionInstance> activeChampions,
+            IMatchRandom rng)
+        {
+            ArgumentNullException.ThrowIfNull(effect);
+
+            return SelectTargets(source, effect.TargetMode, effect.TargetScope, allChampions, activeChampions, rng);
+        }
+
+        /// <summary>
+        /// Selects all valid candidates for an effect before target-scope random selection.
+        /// </summary>
+        /// <param name="source">The champion applying the effect.</param>
+        /// <param name="effect">The attack effect being evaluated.</param>
+        /// <param name="allChampions">All living and inactive champions in the match.</param>
+        /// <param name="activeChampions">Champions currently participating in the active fight.</param>
+        /// <returns>The full valid living candidate pool.</returns>
+        public static IReadOnlyList<ChampionInstance> SelectCandidatePool(
+            ChampionInstance source,
+            AttackEffect effect,
+            IEnumerable<ChampionInstance> allChampions,
+            IEnumerable<ChampionInstance> activeChampions)
+        {
+            ArgumentNullException.ThrowIfNull(effect);
+            return SelectCandidatePool(source, effect.TargetMode, allChampions, activeChampions);
+        }
+
+        /// <summary>
+        /// Selects all valid candidates for an ability effect before target-scope random selection.
+        /// </summary>
+        /// <param name="source">The champion applying the effect.</param>
+        /// <param name="effect">The ability effect being evaluated.</param>
+        /// <param name="allChampions">All living and inactive champions in the match.</param>
+        /// <param name="activeChampions">Champions currently participating in the active fight.</param>
+        /// <returns>The full valid living candidate pool.</returns>
+        public static IReadOnlyList<ChampionInstance> SelectCandidatePool(
+            ChampionInstance source,
+            AbilityEffect effect,
+            IEnumerable<ChampionInstance> allChampions,
+            IEnumerable<ChampionInstance> activeChampions)
+        {
+            ArgumentNullException.ThrowIfNull(effect);
+            return SelectCandidatePool(source, effect.TargetMode, allChampions, activeChampions);
+        }
+
+        private static IReadOnlyList<ChampionInstance> SelectTargets(
+            ChampionInstance source,
+            TargetMode targetMode,
+            TargetScope targetScope,
+            IEnumerable<ChampionInstance> allChampions,
+            IEnumerable<ChampionInstance> activeChampions,
+            IMatchRandom rng)
+        {
             ArgumentNullException.ThrowIfNull(rng);
 
             IReadOnlyList<ChampionInstance> candidates = SelectCandidatePool(
                 source,
-                effect,
+                targetMode,
                 allChampions,
                 activeChampions);
 
-            if (effect.TargetScope == TargetScope.All || candidates.Count == 0)
+            if (targetScope == TargetScope.All || candidates.Count == 0)
             {
                 return candidates;
             }
@@ -45,33 +111,20 @@ namespace AutoSim.Domain.Services
             return [candidates[rng.Next(candidates.Count)]];
         }
 
-        /// <summary>
-        /// Selects all valid candidates for an effect before target-scope random selection.
-        /// </summary>
-        /// <param name="source">The champion applying the effect.</param>
-        /// <param name="effect">The effect being evaluated.</param>
-        /// <param name="allChampions">All living and inactive champions in the match.</param>
-        /// <param name="activeChampions">Champions currently participating in the active fight.</param>
-        /// <returns>The full valid living candidate pool.</returns>
-        public static IReadOnlyList<ChampionInstance> SelectCandidatePool(
+        private static IReadOnlyList<ChampionInstance> SelectCandidatePool(
             ChampionInstance source,
-            CombatEffect effect,
+            TargetMode targetMode,
             IEnumerable<ChampionInstance> allChampions,
             IEnumerable<ChampionInstance> activeChampions)
         {
             ArgumentNullException.ThrowIfNull(source);
-            ArgumentNullException.ThrowIfNull(effect);
             ArgumentNullException.ThrowIfNull(allChampions);
             ArgumentNullException.ThrowIfNull(activeChampions);
 
             List<ChampionInstance> allLivingChampions = allChampions.Where(champion => champion.IsAlive).ToList();
             List<ChampionInstance> activeLivingChampions = activeChampions.Where(champion => champion.IsAlive).ToList();
 
-            return GetCandidates(
-                source,
-                effect.TargetMode,
-                allLivingChampions,
-                activeLivingChampions);
+            return GetCandidates(source, targetMode, allLivingChampions, activeLivingChampions);
         }
 
         private static List<ChampionInstance> GetCandidates(
