@@ -478,6 +478,131 @@ namespace AutoSim.Domain.Tests.Services
         }
 
         [Test]
+        public void Tick_NoDamageCapability_PureHealerStartsRetreating()
+        {
+            RoundState state = CreateState([CreatePureHealerDefinition()], [CreateDefinition()]);
+            ChampionInstance healer = state.BlueTeam.Champions[0];
+            ChampionInstance enemy = state.RedTeam.Champions[0];
+            StartFight(state, healer, enemy);
+
+            Tick(state, 0.1);
+
+            Assert.That(healer.Intent, Is.EqualTo(ChampionIntent.Retreating));
+        }
+
+        [Test]
+        public void Tick_NoDamageCapability_PureShielderStartsRetreating()
+        {
+            RoundState state = CreateState([CreatePureShielderDefinition()], [CreateDefinition()]);
+            ChampionInstance shielder = state.BlueTeam.Champions[0];
+            ChampionInstance enemy = state.RedTeam.Champions[0];
+            StartFight(state, shielder, enemy);
+
+            Tick(state, 0.1);
+
+            Assert.That(shielder.Intent, Is.EqualTo(ChampionIntent.Retreating));
+        }
+
+        [Test]
+        public void Tick_NoDamageCapability_DamageFighterDoesNotRetreat()
+        {
+            RoundState state = CreateState([CreateDefinition()], [CreateDefinition()]);
+            ChampionInstance fighter = state.BlueTeam.Champions[0];
+            ChampionInstance enemy = state.RedTeam.Champions[0];
+            StartFight(state, fighter, enemy);
+
+            Tick(state, 0.1);
+
+            Assert.That(fighter.Intent, Is.EqualTo(ChampionIntent.Laning));
+        }
+
+        [Test]
+        public void Tick_NoDamageCapability_DamageAbilityOnCooldownDoesNotRetreat()
+        {
+            AbilityEffect damage = CreateAbilityEffect(CombatEffectType.Damage, 25, TargetMode.EnemyAny, TargetScope.One);
+            RoundState state = CreateState(
+                [CreateDefinition(attackEffects: [], abilityEffects: [damage])],
+                [CreateDefinition()]);
+            ChampionInstance mage = state.BlueTeam.Champions[0];
+            ChampionInstance enemy = state.RedTeam.Champions[0];
+            mage.AbilityCooldown = 999;
+            StartFight(state, mage, enemy);
+
+            Tick(state, 0.1);
+
+            Assert.That(mage.Intent, Is.EqualTo(ChampionIntent.Laning));
+        }
+
+        [Test]
+        public void Tick_NoDamageCapability_RetreatingDamageChampionDoesNotCount()
+        {
+            RoundState state = CreateState([CreateDefinition(), CreatePureHealerDefinition()], [CreateDefinition()]);
+            ChampionInstance retreatingDamageChampion = state.BlueTeam.Champions[0];
+            ChampionInstance healer = state.BlueTeam.Champions[1];
+            ChampionInstance enemy = state.RedTeam.Champions[0];
+            StartFight(state, retreatingDamageChampion, enemy);
+            AddParticipant(state.ActiveFights.Single(), healer);
+            retreatingDamageChampion.Intent = ChampionIntent.Retreating;
+            retreatingDamageChampion.CurrentHealth = retreatingDamageChampion.MaximumHealth - 1;
+
+            Tick(state, 0.1);
+
+            Assert.That(healer.Intent, Is.EqualTo(ChampionIntent.Retreating));
+        }
+
+        [Test]
+        public void Tick_NoDamageCapability_DeadDamageChampionDoesNotCount()
+        {
+            RoundState state = CreateState([CreateDefinition(), CreatePureHealerDefinition()], [CreateDefinition()]);
+            ChampionInstance deadDamageChampion = state.BlueTeam.Champions[0];
+            ChampionInstance healer = state.BlueTeam.Champions[1];
+            ChampionInstance enemy = state.RedTeam.Champions[0];
+            StartFight(state, deadDamageChampion, enemy);
+            AddParticipant(state.ActiveFights.Single(), healer);
+            deadDamageChampion.CurrentHealth = 0;
+
+            Tick(state, 0.1);
+
+            Assert.That(healer.Intent, Is.EqualTo(ChampionIntent.Retreating));
+        }
+
+        [Test]
+        public void Tick_NoDamageCapability_BothSidesCannotDamage_BothSidesRetreat()
+        {
+            RoundState state = CreateState([CreatePureHealerDefinition()], [CreatePureShielderDefinition()]);
+            ChampionInstance healer = state.BlueTeam.Champions[0];
+            ChampionInstance shielder = state.RedTeam.Champions[0];
+            StartFight(state, healer, shielder);
+
+            Tick(state, 0.1);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(healer.Intent, Is.EqualTo(ChampionIntent.Retreating));
+                Assert.That(shielder.Intent, Is.EqualTo(ChampionIntent.Retreating));
+            });
+        }
+
+        [Test]
+        public void Tick_NoDamageCapability_RetreatsOnceAndDoesNotDuplicateEvents()
+        {
+            RoundState state = CreateState([CreatePureHealerDefinition()], [CreateDefinition()]);
+            ChampionInstance healer = state.BlueTeam.Champions[0];
+            ChampionInstance enemy = state.RedTeam.Champions[0];
+            StartFight(state, healer, enemy);
+
+            Tick(state, 0.1);
+            Tick(state, 0.1);
+
+            IReadOnlyList<RoundEvent> retreatEvents = state.Events
+                .Where(roundEvent => roundEvent.Type == RoundEventType.ChampionRetreated)
+                .Where(roundEvent => roundEvent.SourceChampionId == healer.Definition.Id)
+                .ToList();
+
+            Assert.That(retreatEvents, Has.Count.EqualTo(1));
+        }
+
+        [Test]
         public void Simulate_RoundResult_EndsAtDurationAndUsesTieBreakers()
         {
             RoundSettings settings = new()
@@ -657,13 +782,18 @@ namespace AutoSim.Domain.Tests.Services
             int attackPower = 100,
             IReadOnlyList<AttackEffect>? attackEffects = null,
             IReadOnlyList<AbilityEffect>? abilityEffects = null,
-            double abilityCastTime = 0.5) =>
-            TestChampionFactory.CreateDefinition(
+            double abilityCastTime = 0.5)
+        {
+            IReadOnlyList<AttackEffect> effects = attackEffects
+                ?? [CreateAttackEffect(CombatEffectType.Damage, TargetMode.EnemyAny, TargetScope.One)];
+
+            return TestChampionFactory.CreateDefinition(
                 defaultPosition,
                 attackPower: attackPower,
-                attackEffects: attackEffects,
+                attackEffects: effects,
                 abilityEffects: abilityEffects,
                 abilityCastTime: abilityCastTime);
+        }
 
         private static RoundRoster CreateRoster(
             IReadOnlyList<ChampionDefinition> blue,
@@ -722,6 +852,28 @@ namespace AutoSim.Domain.Tests.Services
             TargetScope targetScope) =>
             TestChampionFactory.CreateAbilityEffect(type, abilityPower, targetMode, targetScope);
 
+        private static ChampionDefinition CreatePureHealerDefinition() =>
+            CreateDefinition(
+                attackEffects: [CreateAttackEffect(CombatEffectType.Heal, TargetMode.AllyAny, TargetScope.One)],
+                abilityEffects: [CreateAbilityEffect(CombatEffectType.Heal, 25, TargetMode.AllyAny, TargetScope.One)]);
+
+        private static ChampionDefinition CreatePureShielderDefinition() =>
+            CreateDefinition(
+                attackEffects: [TestChampionFactory.CreateAttackEffect(
+                    CombatEffectType.Shield,
+                    TargetMode.AllyAny,
+                    TargetScope.One,
+                    5.0)],
+                abilityEffects:
+                [
+                    TestChampionFactory.CreateAbilityEffect(
+                        CombatEffectType.Shield,
+                        25,
+                        TargetMode.AllyAny,
+                        TargetScope.One,
+                        5.0)
+                ]);
+
         private static void StartFight(
             RoundState state,
             ChampionInstance blue,
@@ -734,6 +886,8 @@ namespace AutoSim.Domain.Tests.Services
                 Position = position
             };
 
+            blue.LanePosition = position;
+            red.LanePosition = position;
             AddParticipant(fight, blue);
             AddParticipant(fight, red);
             state.ActiveFights.Add(fight);

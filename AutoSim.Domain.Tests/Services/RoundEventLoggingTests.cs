@@ -190,7 +190,7 @@ namespace AutoSim.Domain.Tests.Services
             AbilityEffect damage = CreateAbilityEffect(CombatEffectType.Damage, 25, TargetMode.EnemyAny, TargetScope.One);
             RoundState state = CreateState(
                 [CreateDefinition(attackEffects: [attackDamage], abilityEffects: [heal, shield, damage])],
-                [CreateDefinition(attackEffects: [])]);
+                [CreateDefinition()]);
             ChampionInstance blue = state.BlueTeam.Champions[0];
             ChampionInstance red = state.RedTeam.Champions[0];
             blue.AbilityCooldown = 0;
@@ -222,7 +222,7 @@ namespace AutoSim.Domain.Tests.Services
             AttackEffect attackDamage = CreateAttackEffect(CombatEffectType.Damage, TargetMode.EnemyAny, TargetScope.One);
             RoundState state = CreateState(
                 [CreateDefinition(attackEffects: [attackDamage])],
-                [CreateDefinition(attackEffects: [])]);
+                [CreateDefinition()]);
             ChampionInstance blue = state.BlueTeam.Champions[0];
             ChampionInstance red = state.RedTeam.Champions[0];
             StartFight(state, blue, red);
@@ -394,12 +394,17 @@ namespace AutoSim.Domain.Tests.Services
             FormationPosition defaultPosition = FormationPosition.Frontline,
             int attackPower = 100,
             IReadOnlyList<AttackEffect>? attackEffects = null,
-            IReadOnlyList<AbilityEffect>? abilityEffects = null) =>
-            TestChampionFactory.CreateDefinition(
+            IReadOnlyList<AbilityEffect>? abilityEffects = null)
+        {
+            IReadOnlyList<AttackEffect> effects = attackEffects
+                ?? [CreateAttackEffect(CombatEffectType.Damage, TargetMode.EnemyAny, TargetScope.One)];
+
+            return TestChampionFactory.CreateDefinition(
                 defaultPosition,
                 attackPower: attackPower,
-                attackEffects: attackEffects,
+                attackEffects: effects,
                 abilityEffects: abilityEffects);
+        }
 
         private static RoundRoster CreateRoster(
             IReadOnlyList<ChampionDefinition> blue,
@@ -452,6 +457,8 @@ namespace AutoSim.Domain.Tests.Services
                 Position = 0
             };
 
+            blue.LanePosition = 0;
+            red.LanePosition = 0;
             AddParticipant(fight, blue);
             AddParticipant(fight, red);
             state.ActiveFights.Add(fight);

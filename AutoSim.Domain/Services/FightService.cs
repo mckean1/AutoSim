@@ -8,6 +8,7 @@ namespace AutoSim.Domain.Services
     /// </summary>
     public sealed class FightService
     {
+        private readonly FightDamageCapabilityService _damageCapabilityService;
         private readonly ChampionProgressionService _progressionService;
         private readonly RoundSettings _settings;
 
@@ -20,6 +21,7 @@ namespace AutoSim.Domain.Services
         {
             _settings = settings ?? throw new ArgumentNullException(nameof(settings));
             _progressionService = progressionService ?? throw new ArgumentNullException(nameof(progressionService));
+            _damageCapabilityService = new FightDamageCapabilityService();
         }
 
         /// <summary>
@@ -170,6 +172,32 @@ namespace AutoSim.Domain.Services
         }
 
         /// <summary>
+        /// Starts retreat for active fight sides that have no participant capable of damaging the opposing side.
+        /// </summary>
+        /// <param name="state">The round state.</param>
+        public void RetreatSidesWithoutDamage(RoundState state)
+        {
+            ArgumentNullException.ThrowIfNull(state);
+
+            foreach (FightState fight in state.ActiveFights)
+            {
+                IReadOnlyList<ChampionInstance> activeParticipants = GetActiveParticipants(fight, _settings);
+                bool hasBlue = activeParticipants.Any(champion => champion.TeamSide == TeamSide.Blue);
+                bool hasRed = activeParticipants.Any(champion => champion.TeamSide == TeamSide.Red);
+
+                if (hasBlue && !_damageCapabilityService.CanSideDamageEnemy(fight, TeamSide.Blue, state, _settings))
+                {
+                    RetreatSideWithoutDamage(fight, activeParticipants, TeamSide.Blue, state);
+                }
+
+                if (hasRed && !_damageCapabilityService.CanSideDamageEnemy(fight, TeamSide.Red, state, _settings))
+                {
+                    RetreatSideWithoutDamage(fight, activeParticipants, TeamSide.Red, state);
+                }
+            }
+        }
+
+        /// <summary>
         /// Ends fights where one side has no active participants.
         /// </summary>
         /// <param name="state">The round state.</param>
@@ -212,7 +240,6 @@ namespace AutoSim.Domain.Services
                 }
 
                 IReadOnlyList<ChampionInstance> activeParticipants = GetActiveParticipants(fight, _settings);
-                // TODO: Make fight sides with no active damage-capable participants retreat to prevent sustain-only stalls.
                 bool hasBlue = activeParticipants.Any(champion => champion.TeamSide == TeamSide.Blue);
                 bool hasRed = activeParticipants.Any(champion => champion.TeamSide == TeamSide.Red);
 
@@ -304,6 +331,46 @@ namespace AutoSim.Domain.Services
             champion.CurrentBacklineOffset = _settings.BacklineOffset;
             return false;
         }
+
+        private static void RetreatSideWithoutDamage(
+            FightState fight,
+            IEnumerable<ChampionInstance> activeParticipants,
+            TeamSide side,
+            RoundState state)
+        {
+            foreach (ChampionInstance participant in activeParticipants
+                .Where(champion => champion.TeamSide == side)
+                .Where(champion => champion.Intent != ChampionIntent.Retreating))
+            {
+                participant.Intent = ChampionIntent.Retreating;
+                DeathRespawnService.CancelCast(participant);
+                if (HasRetreatEventForFight(participant, fight, state))
+                {
+                    continue;
+                }
+
+                state.AddEvent(new RoundEvent
+                {
+                    TimeSeconds = state.CurrentTime,
+                    Type = RoundEventType.ChampionRetreated,
+                    Lane = fight.Lane.ToString(),
+                    FightId = fight.Id,
+                    TeamSide = participant.TeamSide.ToString(),
+                    ChampionId = participant.Definition.Id,
+                    SourceTeamSide = participant.TeamSide.ToString(),
+                    SourceChampionId = participant.Definition.Id,
+                    SourceChampionName = participant.Definition.Name,
+                    SourcePlayerId = participant.PlayerId,
+                    Message = $"{RoundEventFormatter.ChampionName(participant)} began retreating."
+                });
+            }
+        }
+
+        private static bool HasRetreatEventForFight(ChampionInstance participant, FightState fight, RoundState state) =>
+            state.Events.Any(roundEvent => roundEvent.Type == RoundEventType.ChampionRetreated
+                && roundEvent.FightId == fight.Id
+                && string.Equals(roundEvent.SourcePlayerId, participant.PlayerId, StringComparison.Ordinal)
+                && string.Equals(roundEvent.SourceChampionId, participant.Definition.Id, StringComparison.Ordinal));
 
         private static bool IsEligibleToStartFight(ChampionInstance champion, Lane lane) =>
             champion.IsAlive

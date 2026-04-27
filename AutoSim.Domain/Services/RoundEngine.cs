@@ -176,6 +176,7 @@ namespace AutoSim.Domain.Services
             _deathRespawnService.UpdateRetreatIntents(allChampions, state);
             _fightService.CreateFights(state);
             _fightService.JoinFights(state);
+            _fightService.RetreatSidesWithoutDamage(state);
             _combatActionService.ResolveCombatActions(state);
             _fightService.EndInactiveFights(state);
             DeathRespawnService.ClearRespawnMarkers(allChampions);
