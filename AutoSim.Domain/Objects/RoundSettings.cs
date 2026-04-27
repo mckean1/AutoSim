@@ -93,7 +93,7 @@ namespace AutoSim.Domain.Objects
         /// <summary>
         /// Gets AttackPower gained per level.
         /// </summary>
-        public int PowerPerLevel { get; init; } = 2;
+        public int AttackPowerPerLevel { get; init; } = 2;
 
         /// <summary>
         /// Gets the maximum champion level.
