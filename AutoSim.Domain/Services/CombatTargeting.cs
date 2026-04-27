@@ -102,12 +102,31 @@ namespace AutoSim.Domain.Services
         {
             List<ChampionInstance> championList = champions.ToList();
             List<ChampionInstance> preferredChampions = championList
-                .Where(champion => champion.Position == preferredPosition)
+                .Where(champion => GetCurrentPosition(champion) == preferredPosition)
                 .ToList();
 
             return preferredChampions.Count > 0
                 ? preferredChampions
-                : championList.Where(champion => champion.Position == fallbackPosition).ToList();
+                : championList.Where(champion => GetCurrentPosition(champion) == fallbackPosition).ToList();
+        }
+
+        private static FormationPosition GetCurrentPosition(ChampionInstance champion)
+        {
+            if (champion.CurrentFightPosition is not double fightPosition)
+            {
+                return champion.Position;
+            }
+
+            if (champion.TeamSide == TeamSide.Blue)
+            {
+                return champion.LanePosition <= fightPosition - champion.CurrentBacklineOffset / 2.0
+                    ? FormationPosition.Backline
+                    : FormationPosition.Frontline;
+            }
+
+            return champion.LanePosition >= fightPosition + champion.CurrentBacklineOffset / 2.0
+                ? FormationPosition.Backline
+                : FormationPosition.Frontline;
         }
     }
 }

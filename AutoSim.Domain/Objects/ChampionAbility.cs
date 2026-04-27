@@ -21,6 +21,11 @@ namespace AutoSim.Domain.Objects
         public required double Cooldown { get; init; }
 
         /// <summary>
+        /// Gets the cast time in seconds.
+        /// </summary>
+        public required double CastTime { get; init; }
+
+        /// <summary>
         /// Gets the effects applied when the ability is used.
         /// </summary>
         public required IReadOnlyList<CombatEffect> Effects { get; init; }

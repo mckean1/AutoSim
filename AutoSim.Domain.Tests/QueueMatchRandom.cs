@@ -25,5 +25,7 @@ namespace AutoSim.Domain.Tests
 
             return value;
         }
+
+        public double NextDouble() => Next(10000) / 10000.0;
     }
 }

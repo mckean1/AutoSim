@@ -42,6 +42,7 @@ namespace AutoSim.Domain.Objects
                     Id = "shield-breaker",
                     Name = "Shield Breaker",
                     Cooldown = 8.0,
+                    CastTime = 0.75,
                     Effects =
                     [
                         new CombatEffect
@@ -89,6 +90,7 @@ namespace AutoSim.Domain.Objects
                     Id = "piercing-shot",
                     Name = "Piercing Shot",
                     Cooldown = 6.0,
+                    CastTime = 0.5,
                     Effects =
                     [
                         new CombatEffect
@@ -128,6 +130,7 @@ namespace AutoSim.Domain.Objects
                     Id = "meteor-rain",
                     Name = "Meteor Rain",
                     Cooldown = 10.0,
+                    CastTime = 1.25,
                     Effects =
                     [
                         new CombatEffect
@@ -167,6 +170,7 @@ namespace AutoSim.Domain.Objects
                     Id = "guarding-light",
                     Name = "Guarding Light",
                     Cooldown = 7.0,
+                    CastTime = 0.75,
                     Effects =
                     [
                         new CombatEffect

@@ -9,12 +9,20 @@ namespace AutoSim.Domain.Tests
             string playerId = "player-one",
             FormationPosition defaultPosition = FormationPosition.Frontline,
             int health = 1000,
+            int power = 100,
+            double attackSpeed = 1.0,
+            double abilityCooldown = 5.0,
+            double abilityCastTime = 0.5,
             IReadOnlyList<CombatEffect>? attackEffects = null,
             IReadOnlyList<CombatEffect>? abilityCombatEffects = null)
         {
             ChampionDefinition definition = CreateDefinition(
                 defaultPosition,
                 health,
+                power,
+                attackSpeed,
+                abilityCooldown,
+                abilityCastTime,
                 attackEffects,
                 abilityCombatEffects);
 
@@ -24,6 +32,10 @@ namespace AutoSim.Domain.Tests
         public static ChampionDefinition CreateDefinition(
             FormationPosition defaultPosition = FormationPosition.Frontline,
             int health = 1000,
+            int power = 100,
+            double attackSpeed = 1.0,
+            double abilityCooldown = 5.0,
+            double abilityCastTime = 0.5,
             IReadOnlyList<CombatEffect>? attackEffects = null,
             IReadOnlyList<CombatEffect>? abilityCombatEffects = null) =>
             new ChampionDefinition
@@ -33,8 +45,8 @@ namespace AutoSim.Domain.Tests
                 Role = ChampionRole.Fighter,
                 DefaultPosition = defaultPosition,
                 Health = health,
-                Power = 100,
-                AttackSpeed = 1.0,
+                Power = power,
+                AttackSpeed = attackSpeed,
                 Attack = new ChampionAttack
                 {
                     Effects = attackEffects ?? []
@@ -43,7 +55,8 @@ namespace AutoSim.Domain.Tests
                 {
                     Id = "test-ability",
                     Name = "Test Ability",
-                    Cooldown = 5.0,
+                    Cooldown = abilityCooldown,
+                    CastTime = abilityCastTime,
                     Effects = abilityCombatEffects ?? []
                 }
             };

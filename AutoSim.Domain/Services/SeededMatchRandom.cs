@@ -31,5 +31,8 @@ namespace AutoSim.Domain.Services
 
             return _random.Next(exclusiveMax);
         }
+
+        /// <inheritdoc />
+        public double NextDouble() => _random.NextDouble();
     }
 }

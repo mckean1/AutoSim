@@ -79,7 +79,7 @@ namespace AutoSim.Domain.Services
                 return;
             }
 
-            target.CurrentHealth = Math.Min(target.Definition.Health, target.CurrentHealth + amount);
+            target.CurrentHealth = Math.Min(target.MaximumHealth, target.CurrentHealth + amount);
         }
 
         /// <summary>
