@@ -127,7 +127,7 @@ namespace ConsoleApp.Objects
         private void StartMatch()
         {
             int seed = Environment.TickCount;
-            RoundRoster roster = CreateTemporaryRoundRoster(ChampionCatalog.GetDefaultChampions());
+            RoundRoster roster = CreateTemporaryRoundRoster(ChampionCatalog.GetDefaultChampions(), seed);
             RoundResult result = new RoundEngine().Simulate(roster, seed);
             string logPath = _roundLogWriter.WriteEvents(result.Events, seed);
             string summary = _roundSummaryRenderer.Render("Blue Team", "Red Team", result, logPath);
@@ -139,8 +139,9 @@ namespace ConsoleApp.Objects
         /// Creates the deterministic temporary 5v5 roster used before draft exists.
         /// </summary>
         /// <param name="catalog">The available champion catalog.</param>
+        /// <param name="seed">The deterministic round seed.</param>
         /// <returns>The selected temporary round roster.</returns>
-        public static RoundRoster CreateTemporaryRoundRoster(IReadOnlyList<ChampionDefinition> catalog)
+        public static RoundRoster CreateTemporaryRoundRoster(IReadOnlyList<ChampionDefinition> catalog, int seed)
         {
             ArgumentNullException.ThrowIfNull(catalog);
 
@@ -149,11 +150,24 @@ namespace ConsoleApp.Objects
                 throw new ArgumentException("Catalog must contain at least 10 champions to create a temporary round roster.", nameof(catalog));
             }
 
+            List<ChampionDefinition> shuffledCatalog = catalog.ToList();
+            Shuffle(shuffledCatalog, seed);
+
             return new RoundRoster
             {
-                BlueChampions = catalog.Take(TeamRosterSize).ToList(),
-                RedChampions = catalog.Skip(TeamRosterSize).Take(TeamRosterSize).ToList()
+                BlueChampions = shuffledCatalog.Take(TeamRosterSize).ToList(),
+                RedChampions = shuffledCatalog.Skip(TeamRosterSize).Take(TeamRosterSize).ToList()
             };
+        }
+
+        private static void Shuffle(IList<ChampionDefinition> champions, int seed)
+        {
+            Random rng = new(seed);
+            for (int index = champions.Count - 1; index > 0; index--)
+            {
+                int swapIndex = rng.Next(index + 1);
+                (champions[index], champions[swapIndex]) = (champions[swapIndex], champions[index]);
+            }
         }
     }
 }

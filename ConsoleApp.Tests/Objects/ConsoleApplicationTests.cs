@@ -9,7 +9,7 @@ namespace ConsoleApp.Tests.Objects
         [Test]
         public void CreateTemporaryRoundRoster_DefaultCatalog_ReturnsLegalUniqueFiveVersusFiveRoster()
         {
-            RoundRoster roster = ConsoleApplication.CreateTemporaryRoundRoster(ChampionCatalog.GetDefaultChampions());
+            RoundRoster roster = ConsoleApplication.CreateTemporaryRoundRoster(ChampionCatalog.GetDefaultChampions(), seed: 123);
             IReadOnlyList<string> championIds = roster.BlueChampions
                 .Concat(roster.RedChampions)
                 .Select(champion => champion.Id)
@@ -24,16 +24,58 @@ namespace ConsoleApp.Tests.Objects
         }
 
         [Test]
-        public void CreateTemporaryRoundRoster_DefaultCatalog_SelectsFirstFiveThenNextFive()
+        public void CreateTemporaryRoundRoster_SameSeed_ReturnsSameRoster()
         {
             IReadOnlyList<ChampionDefinition> catalog = ChampionCatalog.GetDefaultChampions();
 
-            RoundRoster roster = ConsoleApplication.CreateTemporaryRoundRoster(catalog);
+            RoundRoster firstRoster = ConsoleApplication.CreateTemporaryRoundRoster(catalog, seed: 123);
+            RoundRoster secondRoster = ConsoleApplication.CreateTemporaryRoundRoster(catalog, seed: 123);
 
             Assert.Multiple(() =>
             {
-                Assert.That(roster.BlueChampions.Select(champion => champion.Id), Is.EqualTo(catalog.Take(5).Select(champion => champion.Id)));
-                Assert.That(roster.RedChampions.Select(champion => champion.Id), Is.EqualTo(catalog.Skip(5).Take(5).Select(champion => champion.Id)));
+                Assert.That(
+                    secondRoster.BlueChampions.Select(champion => champion.Id),
+                    Is.EqualTo(firstRoster.BlueChampions.Select(champion => champion.Id)));
+                Assert.That(
+                    secondRoster.RedChampions.Select(champion => champion.Id),
+                    Is.EqualTo(firstRoster.RedChampions.Select(champion => champion.Id)));
+            });
+        }
+
+        [Test]
+        public void CreateTemporaryRoundRoster_DifferentSeeds_ReturnsDifferentRoster()
+        {
+            IReadOnlyList<ChampionDefinition> catalog = ChampionCatalog.GetDefaultChampions();
+
+            RoundRoster firstRoster = ConsoleApplication.CreateTemporaryRoundRoster(catalog, seed: 123);
+            RoundRoster secondRoster = ConsoleApplication.CreateTemporaryRoundRoster(catalog, seed: 456);
+            IReadOnlyList<string> firstChampionIds = firstRoster.BlueChampions
+                .Concat(firstRoster.RedChampions)
+                .Select(champion => champion.Id)
+                .ToList();
+            IReadOnlyList<string> secondChampionIds = secondRoster.BlueChampions
+                .Concat(secondRoster.RedChampions)
+                .Select(champion => champion.Id)
+                .ToList();
+
+            Assert.That(secondChampionIds, Is.Not.EqualTo(firstChampionIds));
+        }
+
+        [Test]
+        public void CreateTemporaryRoundRoster_DefaultCatalog_DoesNotUseStaticFirstFiveThenNextFive()
+        {
+            IReadOnlyList<ChampionDefinition> catalog = ChampionCatalog.GetDefaultChampions();
+
+            RoundRoster roster = ConsoleApplication.CreateTemporaryRoundRoster(catalog, seed: 123);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(
+                    roster.BlueChampions.Select(champion => champion.Id),
+                    Is.Not.EqualTo(catalog.Take(5).Select(champion => champion.Id)));
+                Assert.That(
+                    roster.RedChampions.Select(champion => champion.Id),
+                    Is.Not.EqualTo(catalog.Skip(5).Take(5).Select(champion => champion.Id)));
             });
         }
 
@@ -45,7 +87,7 @@ namespace ConsoleApp.Tests.Objects
                 .ToList();
 
             ArgumentException exception = Assert.Throws<ArgumentException>(
-                () => ConsoleApplication.CreateTemporaryRoundRoster(catalog))!;
+                () => ConsoleApplication.CreateTemporaryRoundRoster(catalog, seed: 123))!;
 
             Assert.That(exception.Message, Does.Contain("Catalog must contain at least 10 champions"));
         }
