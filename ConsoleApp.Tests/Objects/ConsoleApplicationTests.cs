@@ -152,14 +152,18 @@ namespace ConsoleApp.Tests.Objects
 
             string output = application.ExecuteCommand("simulate rounds 2");
             string[] logs = Directory.GetFiles(directory, "*.jsonl");
+            string[] reports = Directory.GetFiles(directory, "simulation_summary_*.txt");
 
             Assert.Multiple(() =>
             {
                 Assert.That(logs, Has.Length.EqualTo(2));
+                Assert.That(reports, Has.Length.EqualTo(1));
                 Assert.That(output, Does.Contain("Simulated 2 rounds."));
-                Assert.That(output, Does.Contain("Aggregate Results"));
+                Assert.That(output, Does.Contain("Aggregate report written to:"));
                 Assert.That(output, Does.Contain("Analyze all logs with:"));
                 Assert.That(output, Does.Contain("analyze rounds"));
+                Assert.That(output, Does.Not.Contain("Team Averages"));
+                Assert.That(File.ReadAllText(reports.Single()), Does.Contain("Aggregate Results"));
             });
         }
 
@@ -194,13 +198,19 @@ namespace ConsoleApp.Tests.Objects
             File.WriteAllText(Path.Combine(directory, "bad.jsonl"), "{bad json");
 
             string output = application.ExecuteCommand("analyze rounds");
+            string[] reports = Directory.GetFiles(directory, "aggregate_round_analysis_*.txt");
 
             Assert.Multiple(() =>
             {
-                Assert.That(output, Does.Contain("Aggregate Round Analysis"));
-                Assert.That(output, Does.Contain("Rounds analyzed: 1"));
-                Assert.That(output, Does.Contain("Skipped Logs"));
-                Assert.That(output, Does.Contain("bad.jsonl"));
+                Assert.That(reports, Has.Length.EqualTo(1));
+                Assert.That(output, Does.Contain("Analyzed 1 rounds."));
+                Assert.That(output, Does.Contain("Aggregate report written to:"));
+                Assert.That(output, Does.Not.Contain("Skipped Logs"));
+                string report = File.ReadAllText(reports.Single());
+                Assert.That(report, Does.Contain("Aggregate Round Analysis"));
+                Assert.That(report, Does.Contain("Rounds analyzed: 1"));
+                Assert.That(report, Does.Contain("Skipped Logs"));
+                Assert.That(report, Does.Contain("bad.jsonl"));
             });
         }
 

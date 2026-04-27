@@ -26,6 +26,7 @@ namespace ConsoleApp.Objects
         private readonly RoundLogAnalyzer _roundLogAnalyzer;
         private readonly RoundLogReader _roundLogReader;
         private readonly RoundLogWriter _roundLogWriter;
+        private readonly RoundReportWriter _roundReportWriter;
         private readonly RoundSummaryRenderer _roundSummaryRenderer;
         private readonly Func<int> _seedProvider;
 
@@ -43,6 +44,7 @@ namespace ConsoleApp.Objects
             _roundLogAnalyzer = new RoundLogAnalyzer();
             _roundLogReader = new RoundLogReader();
             _roundLogWriter = new RoundLogWriter(logDirectory);
+            _roundReportWriter = new RoundReportWriter(logDirectory);
             _roundSummaryRenderer = new RoundSummaryRenderer();
             _seedProvider = seedProvider ?? (() => Environment.TickCount);
         }
@@ -224,11 +226,10 @@ namespace ConsoleApp.Objects
             int baseSeed = _seedProvider();
             AggregateRoundAnalysis analysis = new RoundBatchSimulator(_roundLogWriter).Simulate(count, baseSeed);
             string report = _aggregateRoundAnalysisRenderer.Render("Aggregate Results", _logDirectory, analysis);
+            string reportPath = _roundReportWriter.WriteReport("simulation_summary", report);
             return $"Simulated {count} rounds." + Environment.NewLine
                 + $"Logs written to: {_logDirectory}" + Environment.NewLine
-                + Environment.NewLine
-                + report
-                + Environment.NewLine
+                + $"Aggregate report written to: {reportPath}" + Environment.NewLine
                 + "Analyze all logs with:" + Environment.NewLine
                 + "analyze rounds" + Environment.NewLine;
         }
@@ -270,12 +271,20 @@ namespace ConsoleApp.Objects
             if (analyses.Count == 0)
             {
                 AggregateRoundAnalysis emptyAnalysis = _aggregateRoundAnalyzer.Analyze([], logPaths.Count, skippedLogs);
+                string emptyReport = _aggregateRoundAnalysisRenderer.Render(
+                    "Aggregate Round Analysis",
+                    _logDirectory,
+                    emptyAnalysis);
+                string emptyReportPath = _roundReportWriter.WriteReport("aggregate_round_analysis", emptyReport);
                 return "No valid round logs were found." + Environment.NewLine
-                    + _aggregateRoundAnalysisRenderer.Render("Aggregate Round Analysis", _logDirectory, emptyAnalysis);
+                    + $"Aggregate report written to: {emptyReportPath}" + Environment.NewLine;
             }
 
             AggregateRoundAnalysis analysis = _aggregateRoundAnalyzer.Analyze(analyses, logPaths.Count, skippedLogs);
-            return _aggregateRoundAnalysisRenderer.Render("Aggregate Round Analysis", _logDirectory, analysis);
+            string report = _aggregateRoundAnalysisRenderer.Render("Aggregate Round Analysis", _logDirectory, analysis);
+            string reportPath = _roundReportWriter.WriteReport("aggregate_round_analysis", report);
+            return $"Analyzed {analysis.RoundsAnalyzed} rounds." + Environment.NewLine
+                + $"Aggregate report written to: {reportPath}" + Environment.NewLine;
         }
 
         /// <summary>
