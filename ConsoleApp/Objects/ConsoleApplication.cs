@@ -1,4 +1,7 @@
 using AutoSim.Domain.Enums;
+using AutoSim.Domain.Management.Interfaces;
+using AutoSim.Domain.Management.Models;
+using AutoSim.Domain.Management.Services;
 using AutoSim.Domain.Objects;
 using AutoSim.Domain.Services;
 using ConsoleApp.Constants;
@@ -27,13 +30,18 @@ namespace ConsoleApp.Objects
         private readonly RoundLogReader _roundLogReader;
         private readonly RoundLogWriter _roundLogWriter;
         private readonly RoundReportWriter _roundReportWriter;
-        private readonly RoundSummaryRenderer _roundSummaryRenderer;
+        private readonly SeasonProgressionService _seasonProgressionService;
         private readonly Func<int> _seedProvider;
+        private readonly WorldGenerationService _worldGenerationService;
+        private WorldState? _world;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="ConsoleApplication"/> class.
         /// </summary>
-        public ConsoleApplication(string logDirectory = "logs/rounds", Func<int>? seedProvider = null)
+        public ConsoleApplication(
+            string logDirectory = "logs/rounds",
+            Func<int>? seedProvider = null,
+            IMatchEngineWrapper? matchEngineWrapper = null)
         {
             _command = string.Empty;
             _previousCommand = string.Empty;
@@ -45,8 +53,9 @@ namespace ConsoleApp.Objects
             _roundLogReader = new RoundLogReader();
             _roundLogWriter = new RoundLogWriter(logDirectory);
             _roundReportWriter = new RoundReportWriter(logDirectory);
-            _roundSummaryRenderer = new RoundSummaryRenderer();
+            _seasonProgressionService = new SeasonProgressionService(matchEngineWrapper);
             _seedProvider = seedProvider ?? (() => Environment.TickCount);
+            _worldGenerationService = new WorldGenerationService();
         }
 
         /// <summary>
@@ -108,9 +117,24 @@ namespace ConsoleApp.Objects
         {
             _command = command ?? string.Empty;
 
-            if (IsStartCommand())
+            if (IsStartGameCommand())
+            {
+                return StartGame();
+            }
+
+            if (IsStartMatchCommand())
             {
                 return StartMatch();
+            }
+
+            if (IsShowTeamCommand())
+            {
+                return ShowTeam();
+            }
+
+            if (IsShowLeagueCommand())
+            {
+                return ShowLeague();
             }
 
             if (IsSimulateRoundsCommand())
@@ -130,7 +154,10 @@ namespace ConsoleApp.Objects
 
             if (IsHelpCommand())
             {
-                return "  start match - Starts a match." + Environment.NewLine
+                return "  start - Starts a new game." + Environment.NewLine
+                    + "  show team - Shows your coach, team, league, division, and players." + Environment.NewLine
+                    + "  show league - Shows your current league, divisions, teams, and standings." + Environment.NewLine
+                    + "  start match - Resolves the current week of scheduled matches." + Environment.NewLine
                     + "  simulate rounds <number> - Simulates many rounds." + Environment.NewLine
                     + "  analyze round <log path> - Analyzes a saved round log." + Environment.NewLine
                     + "  analyze rounds - Analyzes all saved round logs." + Environment.NewLine
@@ -167,9 +194,10 @@ namespace ConsoleApp.Objects
             Console.Write($"{ConsoleConstants.Prompt}{_command}");
         }
 
-        private bool IsStartCommand() =>
-            string.Equals(_command, ConsoleConstants.Start, StringComparison.Ordinal)
-            || string.Equals(_command, ConsoleConstants.StartMatch, StringComparison.Ordinal);
+        private bool IsStartGameCommand() => string.Equals(_command, ConsoleConstants.Start, StringComparison.Ordinal);
+        private bool IsStartMatchCommand() => string.Equals(_command, ConsoleConstants.StartMatch, StringComparison.Ordinal);
+        private bool IsShowLeagueCommand() => string.Equals(_command, "show league", StringComparison.OrdinalIgnoreCase);
+        private bool IsShowTeamCommand() => string.Equals(_command, "show team", StringComparison.OrdinalIgnoreCase);
         private bool IsAnalyzeRoundCommand() =>
             _command.StartsWith("analyze round ", StringComparison.OrdinalIgnoreCase);
         private bool IsAnalyzeRoundsCommand() =>
@@ -182,11 +210,101 @@ namespace ConsoleApp.Objects
 
         private string StartMatch()
         {
+            if (_world is null)
+            {
+                return "No game has been started. Use start first." + Environment.NewLine;
+            }
+
+            Team humanTeam = GetHumanTeam(_world);
+            int firstResolvedWeek = _world.Season.CurrentWeek;
+            SeasonProgressionResult result = _seasonProgressionService.ResolveNextMatchForTeam(_world, humanTeam.Id);
+            _world = result.World;
+            MatchResult? humanResult = result.MatchResults
+                .FirstOrDefault(matchResult => IsHumanMatch(matchResult, humanTeam.Id, _world));
+
+            string humanSummary = humanResult is null
+                ? "Your team does not have an available scheduled match."
+                : RenderMatchResult(_world, humanResult);
+
+            return $"Resolved from week {firstResolvedWeek}: {result.MatchResults.Count} matches." + Environment.NewLine
+                + humanSummary + Environment.NewLine;
+        }
+
+        private string StartGame()
+        {
             int seed = _seedProvider();
-            RoundRoster roster = CreateTemporaryRoundRoster(ChampionCatalog.GetDefaultChampions(), seed);
-            RoundResult result = new RoundEngine().Simulate(roster, seed);
-            string logPath = _roundLogWriter.WriteEvents(result.Events, seed);
-            return _roundSummaryRenderer.Render("Blue Team", "Red Team", result, logPath);
+            _world = _worldGenerationService.CreateWorld(seed);
+            Team humanTeam = GetHumanTeam(_world);
+            League humanLeague = GetTeamLeague(_world, humanTeam);
+            Division humanDivision = humanLeague.Divisions.First(division => division.Id == humanTeam.DivisionId);
+
+            return "New game started." + Environment.NewLine
+                + $"Seed: {seed}" + Environment.NewLine
+                + $"Team: {humanTeam.Name}" + Environment.NewLine
+                + $"League: {humanLeague.TierName} {humanLeague.Region} League" + Environment.NewLine
+                + $"Division: {humanDivision.Name} Division" + Environment.NewLine;
+        }
+
+        private string ShowLeague()
+        {
+            if (_world is null)
+            {
+                return "No game has been started. Use start first." + Environment.NewLine;
+            }
+
+            Team humanTeam = GetHumanTeam(_world);
+            League league = GetTeamLeague(_world, humanTeam);
+            List<string> lines =
+            [
+                $"{league.TierName} {league.Region} League",
+                "Divisions:"
+            ];
+
+            foreach (Division division in league.Divisions)
+            {
+                lines.Add($"  {division.Name} Division");
+                lines.AddRange(division.TeamIds.Select(teamId => $"    {FormatTeamName(_world, teamId)}"));
+            }
+
+            lines.Add("Standings:");
+            int rank = 1;
+            foreach (LeagueStanding standing in league.Standings)
+            {
+                lines.Add(
+                    $"  {rank}. {FormatTeamName(_world, standing.TeamId)} "
+                    + $"{standing.MatchWins}-{standing.MatchLosses}, Points {standing.Points}");
+                rank++;
+            }
+
+            return string.Join(Environment.NewLine, lines) + Environment.NewLine;
+        }
+
+        private string ShowTeam()
+        {
+            if (_world is null)
+            {
+                return "No game has been started. Use start first." + Environment.NewLine;
+            }
+
+            Coach coach = GetHumanCoach(_world);
+            Team team = GetHumanTeam(_world);
+            League league = GetTeamLeague(_world, team);
+            Division division = league.Divisions.First(currentDivision => currentDivision.Id == team.DivisionId);
+            IReadOnlyList<Player> players = _world.Players
+                .Where(player => team.PlayerIds.Contains(player.Id))
+                .OrderBy(player => player.PositionRole)
+                .ToList();
+
+            List<string> lines =
+            [
+                $"Coach: {coach.Name}",
+                $"Team: {team.Name}",
+                $"League: {league.TierName} {league.Region} League",
+                $"Division: {division.Name} Division",
+                "Players:"
+            ];
+            lines.AddRange(players.Select(player => $"  {player.PositionRole}: {player.Name}"));
+            return string.Join(Environment.NewLine, lines) + Environment.NewLine;
         }
 
         private string AnalyzeRound()
@@ -332,6 +450,58 @@ namespace ConsoleApp.Objects
                     marksmen.Skip(1).Take(1),
                     supports.Skip(1).Take(1))
             };
+        }
+
+        private static Coach GetHumanCoach(WorldState world) =>
+            world.Coaches.Single(coach => coach.IsHuman);
+
+        private static Team GetHumanTeam(WorldState world)
+        {
+            Coach coach = GetHumanCoach(world);
+            return world.Tiers
+                .SelectMany(tier => tier.Leagues)
+                .SelectMany(league => league.Teams)
+                .Single(team => team.Id == coach.TeamId);
+        }
+
+        private static League GetTeamLeague(WorldState world, Team team) =>
+            world.Tiers
+                .SelectMany(tier => tier.Leagues)
+                .Single(league => league.Id == team.LeagueId);
+
+        private static bool IsHumanMatch(MatchResult result, string humanTeamId, WorldState world)
+        {
+            ScheduledMatch? match = world.Tiers
+                .SelectMany(tier => tier.Leagues)
+                .SelectMany(league => league.Schedule)
+                .FirstOrDefault(scheduledMatch => scheduledMatch.Id == result.MatchId);
+
+            return match is not null
+                && (string.Equals(match.HomeTeamId, humanTeamId, StringComparison.Ordinal)
+                    || string.Equals(match.AwayTeamId, humanTeamId, StringComparison.Ordinal));
+        }
+
+        private static string FormatTeamName(WorldState world, string teamId) =>
+            world.Tiers
+                .SelectMany(tier => tier.Leagues)
+                .SelectMany(league => league.Teams)
+                .FirstOrDefault(team => team.Id == teamId)?.Name ?? teamId;
+
+        private static string RenderMatchResult(WorldState world, MatchResult result)
+        {
+            List<string> lines =
+            [
+                $"Match: {FormatTeamName(world, result.BlueTeamId)} vs {FormatTeamName(world, result.RedTeamId)}",
+                $"Type: {result.MatchType}",
+                $"Best of: {result.BestOf}",
+                "Rounds:"
+            ];
+            lines.AddRange(result.RoundResults.Select(round =>
+                $"  Round {round.RoundNumber}: {FormatTeamName(world, round.WinningTeamId)}"));
+            lines.Add(
+                $"Final score: {result.BlueRoundWins}-{result.RedRoundWins}");
+            lines.Add($"Winner: {FormatTeamName(world, result.WinningTeamId)}");
+            return string.Join(Environment.NewLine, lines);
         }
 
         private static List<ChampionDefinition> GetShuffledRoleChampions(

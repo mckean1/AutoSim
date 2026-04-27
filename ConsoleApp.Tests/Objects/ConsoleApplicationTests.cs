@@ -1,7 +1,10 @@
 using AutoSim.Domain.Enums;
+using AutoSim.Domain.Management.Interfaces;
+using AutoSim.Domain.Management.Models;
 using AutoSim.Domain.Objects;
 using AutoSim.Domain.Services;
 using ConsoleApp.Objects;
+using MatchType = AutoSim.Domain.Enums.MatchType;
 
 namespace ConsoleApp.Tests.Objects
 {
@@ -145,6 +148,46 @@ namespace ConsoleApp.Tests.Objects
         }
 
         [Test]
+        public void ExecuteCommand_ManagementCommands_RunNewGameFlow()
+        {
+            string directory = CreateTempDirectory();
+            ConsoleApplication application = new(directory, () => 123);
+
+            string startOutput = application.ExecuteCommand("start");
+            string teamOutput = application.ExecuteCommand("show team");
+            string leagueOutput = application.ExecuteCommand("show league");
+            string matchOutput = application.ExecuteCommand("start match");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(startOutput, Does.Contain("New game started."));
+                Assert.That(teamOutput, Does.Contain("Coach: Human Coach"));
+                Assert.That(teamOutput, Does.Contain("Players:"));
+                Assert.That(leagueOutput, Does.Contain("Standings:"));
+                Assert.That(matchOutput, Does.Contain("Resolved from week 1:"));
+            });
+        }
+
+        [Test]
+        public void ExecuteCommand_StartMatch_RoutesThroughMatchEngineWrapper()
+        {
+            string directory = CreateTempDirectory();
+            CountingMatchEngineWrapper matchEngineWrapper = new();
+            ConsoleApplication application = new(directory, () => 123, matchEngineWrapper);
+            application.ExecuteCommand("start");
+
+            string output = application.ExecuteCommand("start match");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(matchEngineWrapper.CallCount, Is.GreaterThan(0));
+                Assert.That(output, Does.Contain("Match:"));
+                Assert.That(output, Does.Contain("Best of:"));
+                Assert.That(output, Does.Contain("Winner:"));
+            });
+        }
+
+        [Test]
         public void ExecuteCommand_SimulateRounds_WritesRequestedLogsAndPrintsAggregateResults()
         {
             string directory = CreateTempDirectory();
@@ -261,6 +304,60 @@ namespace ConsoleApp.Tests.Objects
             string directory = Path.Combine(Path.GetTempPath(), $"autosim-rounds-{Guid.NewGuid():N}");
             Directory.CreateDirectory(directory);
             return directory;
+        }
+
+        private sealed class CountingMatchEngineWrapper : IMatchEngineWrapper
+        {
+            public int CallCount { get; private set; }
+
+            public MatchResult Resolve(
+                ScheduledMatch match,
+                Team blueTeam,
+                Team redTeam,
+                Coach blueCoach,
+                Coach redCoach,
+                IReadOnlyList<Player> players,
+                IReadOnlyList<ChampionDefinition> championCatalog,
+                int seed)
+            {
+                _ = blueCoach;
+                _ = redCoach;
+                _ = players;
+                _ = championCatalog;
+                _ = seed;
+                CallCount++;
+                return new MatchResult
+                {
+                    BestOf = match.BestOf,
+                    BlueRoundWins = 2,
+                    BlueTeamId = blueTeam.Id,
+                    LosingTeamId = redTeam.Id,
+                    MatchId = match.Id,
+                    MatchType = match.MatchType,
+                    RedRoundWins = 0,
+                    RedTeamId = redTeam.Id,
+                    RoundResults =
+                    [
+                        new AutoSim.Domain.Management.Models.RoundResult
+                        {
+                            BlueTeamId = blueTeam.Id,
+                            LosingTeamId = redTeam.Id,
+                            RedTeamId = redTeam.Id,
+                            RoundNumber = 1,
+                            WinningTeamId = blueTeam.Id
+                        },
+                        new AutoSim.Domain.Management.Models.RoundResult
+                        {
+                            BlueTeamId = blueTeam.Id,
+                            LosingTeamId = redTeam.Id,
+                            RedTeamId = redTeam.Id,
+                            RoundNumber = 2,
+                            WinningTeamId = blueTeam.Id
+                        }
+                    ],
+                    WinningTeamId = blueTeam.Id
+                };
+            }
         }
 
         private static void AssertRoleBalance(IReadOnlyList<ChampionDefinition> champions)
