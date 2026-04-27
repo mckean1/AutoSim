@@ -3,6 +3,7 @@
     <File Path="AGENTS.md" />
   </Folder>
   <Project Path="AutoSim.Client/AutoSim.Client.csproj" />
+  <Project Path="AutoSim.Domain.Tests/AutoSim.Domain.Tests.csproj" />
   <Project Path="AutoSim.Domain/AutoSim.Domain.csproj" Id="0ca85700-5bdd-49d1-8301-1ea9ad2a7d54" />
   <Project Path="ConsoleApp/ConsoleApp.csproj" Id="0512cb52-dab1-4645-ae1d-4a6f4bcf2e3d" />
 </Solution>
