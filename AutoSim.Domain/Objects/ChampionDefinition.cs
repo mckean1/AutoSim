@@ -18,6 +18,11 @@ namespace AutoSim.Domain.Objects
         public required string Name { get; init; }
 
         /// <summary>
+        /// Gets the champion list display description.
+        /// </summary>
+        public required string Description { get; init; }
+
+        /// <summary>
         /// Gets the champion role.
         /// </summary>
         public required ChampionRole Role { get; init; }

@@ -212,6 +212,7 @@ namespace AutoSim.Domain.Services
                 }
 
                 IReadOnlyList<ChampionInstance> activeParticipants = GetActiveParticipants(fight, _settings);
+                // TODO: Make fight sides with no active damage-capable participants retreat to prevent sustain-only stalls.
                 bool hasBlue = activeParticipants.Any(champion => champion.TeamSide == TeamSide.Blue);
                 bool hasRed = activeParticipants.Any(champion => champion.TeamSide == TeamSide.Red);
 

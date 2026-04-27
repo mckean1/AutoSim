@@ -48,6 +48,7 @@ namespace AutoSim.Domain.Tests
             {
                 Id = $"test-{Guid.NewGuid():N}",
                 Name = "Test Champion",
+                Description = "A test champion used by unit tests.",
                 Role = ChampionRole.Fighter,
                 DefaultPosition = defaultPosition,
                 Health = health,
