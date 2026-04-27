@@ -108,6 +108,23 @@ namespace AutoSim.Domain.Services
                 }
 
                 state.ActiveFights.Add(fight);
+                state.AddEvent(new RoundEvent
+                {
+                    TimeSeconds = state.CurrentTime,
+                    Type = RoundEventType.FightStarted,
+                    Lane = lane.ToString(),
+                    FightId = fight.Id,
+                    ChampionId = blue.Definition.Id,
+                    SourceTeamSide = blue.TeamSide.ToString(),
+                    SourceChampionId = blue.Definition.Id,
+                    SourceChampionName = blue.Definition.Name,
+                    SourcePlayerId = blue.PlayerId,
+                    TargetChampionId = red.Definition.Id,
+                    TargetTeamSide = red.TeamSide.ToString(),
+                    TargetChampionName = red.Definition.Name,
+                    TargetPlayerId = red.PlayerId,
+                    Message = $"Fight started between {RoundEventFormatter.ChampionName(blue)} and {RoundEventFormatter.ChampionName(red)} in {lane}."
+                });
             }
         }
 
@@ -130,7 +147,23 @@ namespace AutoSim.Domain.Services
 
                     if (Math.Abs(champion.LanePosition - fight.Position) <= _settings.EngageRange)
                     {
-                        AddParticipant(fight, champion);
+                        if (AddParticipant(fight, champion))
+                        {
+                            state.AddEvent(new RoundEvent
+                            {
+                                TimeSeconds = state.CurrentTime,
+                                Type = RoundEventType.FightJoined,
+                                Lane = fight.Lane.ToString(),
+                                FightId = fight.Id,
+                                TeamSide = champion.TeamSide.ToString(),
+                                ChampionId = champion.Definition.Id,
+                                SourceTeamSide = champion.TeamSide.ToString(),
+                                SourceChampionId = champion.Definition.Id,
+                                SourceChampionName = champion.Definition.Name,
+                                SourcePlayerId = champion.PlayerId,
+                                Message = $"{RoundEventFormatter.ChampionName(champion)} joined the fight in {fight.Lane}."
+                            });
+                        }
                     }
                 }
             }
@@ -155,11 +188,26 @@ namespace AutoSim.Domain.Services
                         continue;
                     }
 
-                    if (participant.Intent == ChampionIntent.Retreating
+                    if (participant.FightId == fight.Id
+                        && participant.Intent == ChampionIntent.Retreating
                         && Math.Abs(participant.LanePosition - fight.Position) > _settings.EngageRange)
                     {
                         participant.FightId = null;
                         participant.CurrentFightPosition = null;
+                        state.AddEvent(new RoundEvent
+                        {
+                            TimeSeconds = state.CurrentTime,
+                            Type = RoundEventType.ChampionEscaped,
+                            Lane = fight.Lane.ToString(),
+                            FightId = fight.Id,
+                            TeamSide = participant.TeamSide.ToString(),
+                            ChampionId = participant.Definition.Id,
+                            SourceTeamSide = participant.TeamSide.ToString(),
+                            SourceChampionId = participant.Definition.Id,
+                            SourceChampionName = participant.Definition.Name,
+                            SourcePlayerId = participant.PlayerId,
+                            Message = $"{RoundEventFormatter.ChampionName(participant)} escaped the fight."
+                        });
                     }
                 }
 
@@ -177,7 +225,7 @@ namespace AutoSim.Domain.Services
                     TeamSide winningSide = hasBlue ? TeamSide.Blue : TeamSide.Red;
                     foreach (ChampionInstance winner in activeParticipants.Where(champion => champion.TeamSide == winningSide))
                     {
-                        _progressionService.AddExperience(winner, _settings.FightWinXp);
+                        _progressionService.AddExperience(winner, _settings.FightWinXp, state);
                     }
                 }
 
@@ -192,19 +240,68 @@ namespace AutoSim.Domain.Services
                 }
 
                 state.ActiveFights.Remove(fight);
+                state.AddEvent(new RoundEvent
+                {
+                    TimeSeconds = state.CurrentTime,
+                    Type = RoundEventType.FightEnded,
+                    Lane = fight.Lane.ToString(),
+                    FightId = fight.Id,
+                    TeamSide = hasBlue == hasRed ? null : (hasBlue ? TeamSide.Blue : TeamSide.Red).ToString(),
+                    SourceTeamSide = hasBlue == hasRed ? null : (hasBlue ? TeamSide.Blue : TeamSide.Red).ToString(),
+                    Message = hasBlue == hasRed
+                        ? $"The fight in {fight.Lane} ended with no winner."
+                        : $"{(hasBlue ? TeamSide.Blue : TeamSide.Red)} won the fight in {fight.Lane}."
+                });
             }
         }
 
-        private void AddParticipant(FightState fight, ChampionInstance champion)
+        /// <summary>
+        /// Closes all active fights because the round ended.
+        /// </summary>
+        /// <param name="state">The round state.</param>
+        public void CloseActiveFightsForRoundEnd(RoundState state)
+        {
+            ArgumentNullException.ThrowIfNull(state);
+
+            foreach (FightState fight in state.ActiveFights.ToList())
+            {
+                foreach (ChampionInstance participant in fight.Participants)
+                {
+                    if (participant.FightId == fight.Id)
+                    {
+                        participant.FightId = null;
+                    }
+
+                    participant.CurrentFightPosition = null;
+                }
+
+                state.ActiveFights.Remove(fight);
+                state.AddEvent(new RoundEvent
+                {
+                    TimeSeconds = state.CurrentTime,
+                    Type = RoundEventType.FightEnded,
+                    Lane = fight.Lane.ToString(),
+                    FightId = fight.Id,
+                    Message = $"Fight in {fight.Lane} ended because the round ended."
+                });
+            }
+        }
+
+        private bool AddParticipant(FightState fight, ChampionInstance champion)
         {
             if (!fight.Participants.Contains(champion))
             {
                 fight.Participants.Add(champion);
+                champion.FightId = fight.Id;
+                champion.CurrentFightPosition = fight.Position;
+                champion.CurrentBacklineOffset = _settings.BacklineOffset;
+                return true;
             }
 
             champion.FightId = fight.Id;
             champion.CurrentFightPosition = fight.Position;
             champion.CurrentBacklineOffset = _settings.BacklineOffset;
+            return false;
         }
 
         private static bool IsEligibleToStartFight(ChampionInstance champion, Lane lane) =>

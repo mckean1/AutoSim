@@ -49,7 +49,21 @@ namespace AutoSim.Domain.Services
             if (fight is not null && champion.Intent != ChampionIntent.Retreating)
             {
                 IReadOnlyList<ChampionInstance> activeChampions = FightService.GetActiveParticipants(fight, _settings);
-                ChampionCombatResolver.ResolveAbility(champion, state.AllChampions, activeChampions, state.Rng);
+                ChampionCombatResolver.ResolveAbility(champion, state.AllChampions, activeChampions, state.Rng, state);
+                state.AddEvent(new RoundEvent
+                {
+                    TimeSeconds = state.CurrentTime,
+                    Type = RoundEventType.AbilityResolved,
+                    Lane = champion.Lane.ToString(),
+                    FightId = fight.Id,
+                    TeamSide = champion.TeamSide.ToString(),
+                    ChampionId = champion.Definition.Id,
+                    SourceTeamSide = champion.TeamSide.ToString(),
+                    SourceChampionId = champion.Definition.Id,
+                    SourceChampionName = champion.Definition.Name,
+                    SourcePlayerId = champion.PlayerId,
+                    Message = $"{RoundEventFormatter.ChampionName(champion)} resolved {champion.Definition.Ability.Name}."
+                });
                 _deathRespawnService.ProcessDeaths(state, champion);
                 champion.AbilityCooldown = champion.Definition.Ability.Cooldown;
             }
@@ -86,12 +100,40 @@ namespace AutoSim.Domain.Services
                         champion.IsCasting = true;
                         champion.CastTimer = champion.Definition.Ability.CastTime;
                         champion.PendingAbility = champion.Definition.Ability;
+                        state.AddEvent(new RoundEvent
+                        {
+                            TimeSeconds = state.CurrentTime,
+                            Type = RoundEventType.AbilityCastStarted,
+                            Lane = champion.Lane.ToString(),
+                            FightId = fight.Id,
+                            TeamSide = champion.TeamSide.ToString(),
+                            ChampionId = champion.Definition.Id,
+                            SourceTeamSide = champion.TeamSide.ToString(),
+                            SourceChampionId = champion.Definition.Id,
+                            SourceChampionName = champion.Definition.Name,
+                            SourcePlayerId = champion.PlayerId,
+                            Message = $"{RoundEventFormatter.ChampionName(champion)} started casting {champion.Definition.Ability.Name}."
+                        });
                         continue;
                     }
 
                     if (champion.AttackTimer <= 0)
                     {
-                        ChampionCombatResolver.ResolveAttack(champion, state.AllChampions, activeChampions, state.Rng);
+                        ChampionCombatResolver.ResolveAttack(champion, state.AllChampions, activeChampions, state.Rng, state);
+                        state.AddEvent(new RoundEvent
+                        {
+                            TimeSeconds = state.CurrentTime,
+                            Type = RoundEventType.AttackResolved,
+                            Lane = champion.Lane.ToString(),
+                            FightId = fight.Id,
+                            TeamSide = champion.TeamSide.ToString(),
+                            ChampionId = champion.Definition.Id,
+                            SourceTeamSide = champion.TeamSide.ToString(),
+                            SourceChampionId = champion.Definition.Id,
+                            SourceChampionName = champion.Definition.Name,
+                            SourcePlayerId = champion.PlayerId,
+                            Message = $"{RoundEventFormatter.ChampionName(champion)} resolved a basic attack."
+                        });
                         champion.AttackTimer = champion.Definition.AttackSpeed > 0
                             ? 1.0 / champion.Definition.AttackSpeed
                             : 0;

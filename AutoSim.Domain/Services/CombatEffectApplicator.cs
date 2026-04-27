@@ -13,13 +13,13 @@ namespace AutoSim.Domain.Services
         /// <param name="target">The shield target.</param>
         /// <param name="amount">The damage absorption amount.</param>
         /// <param name="duration">The shield duration in seconds.</param>
-        public static void ApplyShield(ChampionInstance target, int amount, double duration)
+        public static int ApplyShield(ChampionInstance target, int amount, double duration)
         {
             ArgumentNullException.ThrowIfNull(target);
 
             if (!target.IsAlive || amount <= 0 || duration <= 0)
             {
-                return;
+                return 0;
             }
 
             target.Shields.Add(new ActiveShield
@@ -27,6 +27,8 @@ namespace AutoSim.Domain.Services
                 Amount = amount,
                 Duration = duration
             });
+
+            return amount;
         }
 
         /// <summary>
@@ -34,16 +36,18 @@ namespace AutoSim.Domain.Services
         /// </summary>
         /// <param name="target">The damage target.</param>
         /// <param name="amount">The damage amount.</param>
-        public static void ApplyDamage(ChampionInstance target, int amount)
+        public static int ApplyDamage(ChampionInstance target, int amount)
         {
             ArgumentNullException.ThrowIfNull(target);
 
             if (!target.IsAlive || amount <= 0)
             {
-                return;
+                return 0;
             }
 
             int remainingDamage = amount;
+            int healthBefore = target.CurrentHealth;
+            int shieldBefore = target.Shields.Sum(shield => shield.Amount);
 
             foreach (ActiveShield shield in target.Shields)
             {
@@ -63,6 +67,9 @@ namespace AutoSim.Domain.Services
             {
                 target.CurrentHealth = Math.Max(0, target.CurrentHealth - remainingDamage);
             }
+
+            int shieldAfter = target.Shields.Sum(shield => shield.Amount);
+            return shieldBefore - shieldAfter + healthBefore - target.CurrentHealth;
         }
 
         /// <summary>
@@ -70,16 +77,18 @@ namespace AutoSim.Domain.Services
         /// </summary>
         /// <param name="target">The healing target.</param>
         /// <param name="amount">The healing amount.</param>
-        public static void ApplyHeal(ChampionInstance target, int amount)
+        public static int ApplyHeal(ChampionInstance target, int amount)
         {
             ArgumentNullException.ThrowIfNull(target);
 
             if (!target.IsAlive || amount <= 0)
             {
-                return;
+                return 0;
             }
 
+            int healthBefore = target.CurrentHealth;
             target.CurrentHealth = Math.Min(target.MaximumHealth, target.CurrentHealth + amount);
+            return target.CurrentHealth - healthBefore;
         }
 
         /// <summary>

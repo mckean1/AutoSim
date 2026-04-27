@@ -1,3 +1,4 @@
+using AutoSim.Domain.Enums;
 using AutoSim.Domain.Objects;
 
 namespace AutoSim.Domain.Services
@@ -38,7 +39,8 @@ namespace AutoSim.Domain.Services
         /// </summary>
         /// <param name="champion">The champion receiving experience.</param>
         /// <param name="experience">The experience to add.</param>
-        public void AddExperience(ChampionInstance champion, int experience)
+        /// <param name="state">The optional round state used for event logging.</param>
+        public void AddExperience(ChampionInstance champion, int experience, RoundState? state = null)
         {
             ArgumentNullException.ThrowIfNull(champion);
 
@@ -49,7 +51,7 @@ namespace AutoSim.Domain.Services
 
             champion.Experience += experience;
             champion.ExperienceProgress += experience;
-            ApplyLevelUps(champion);
+            ApplyLevelUps(champion, state);
         }
 
         /// <summary>
@@ -57,7 +59,8 @@ namespace AutoSim.Domain.Services
         /// </summary>
         /// <param name="champion">The champion receiving experience.</param>
         /// <param name="experience">The experience to add.</param>
-        public void AddExperience(ChampionInstance champion, double experience)
+        /// <param name="state">The optional round state used for event logging.</param>
+        public void AddExperience(ChampionInstance champion, double experience, RoundState? state = null)
         {
             ArgumentNullException.ThrowIfNull(champion);
 
@@ -71,7 +74,7 @@ namespace AutoSim.Domain.Services
             if (wholeExperience > champion.Experience)
             {
                 champion.Experience = wholeExperience;
-                ApplyLevelUps(champion);
+                ApplyLevelUps(champion, state);
             }
         }
 
@@ -101,7 +104,8 @@ namespace AutoSim.Domain.Services
         /// Applies all level ups earned by the champion's total experience.
         /// </summary>
         /// <param name="champion">The champion to level.</param>
-        public void ApplyLevelUps(ChampionInstance champion)
+        /// <param name="state">The optional round state used for event logging.</param>
+        public void ApplyLevelUps(ChampionInstance champion, RoundState? state = null)
         {
             ArgumentNullException.ThrowIfNull(champion);
 
@@ -114,6 +118,24 @@ namespace AutoSim.Domain.Services
                     champion.MaximumHealth,
                     champion.CurrentHealth + _settings.HealthPerLevel);
                 champion.CurrentAttackPower += _settings.AttackPowerPerLevel;
+
+                if (state is not null)
+                {
+                    state.AddEvent(new RoundEvent
+                    {
+                        TimeSeconds = state.CurrentTime,
+                        Type = RoundEventType.ChampionLeveledUp,
+                        Lane = champion.Lane.ToString(),
+                        FightId = champion.FightId,
+                        TeamSide = champion.TeamSide.ToString(),
+                        ChampionId = champion.Definition.Id,
+                        SourceTeamSide = champion.TeamSide.ToString(),
+                        SourceChampionId = champion.Definition.Id,
+                        SourceChampionName = champion.Definition.Name,
+                        SourcePlayerId = champion.PlayerId,
+                        Message = $"{RoundEventFormatter.ChampionName(champion)} reached level {champion.Level}."
+                    });
+                }
             }
         }
 
@@ -130,7 +152,7 @@ namespace AutoSim.Domain.Services
             {
                 if (!champion.IsAlive
                     || champion.JustRespawned
-                    || champion.Intent != Enums.ChampionIntent.Laning
+                    || champion.Intent != ChampionIntent.Laning
                     || champion.FightId.HasValue)
                 {
                     continue;

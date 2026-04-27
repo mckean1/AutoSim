@@ -48,8 +48,18 @@ namespace AutoSim.Domain.Objects
         public required double Duration { get; init; }
 
         /// <summary>
-        /// Gets the optional round event log.
+        /// Gets the number of active fights left when the result was produced.
         /// </summary>
-        public IReadOnlyList<string> EventLog { get; init; } = [];
+        public int ActiveFightCount { get; init; }
+
+        /// <summary>
+        /// Gets the per-champion summaries.
+        /// </summary>
+        public IReadOnlyList<ChampionRoundSummary> ChampionSummaries { get; init; } = [];
+
+        /// <summary>
+        /// Gets the structured round event log.
+        /// </summary>
+        public IReadOnlyList<RoundEvent> Events { get; init; } = [];
     }
 }

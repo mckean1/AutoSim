@@ -7,6 +7,7 @@ namespace ConsoleApp.Constants
     {
         internal const string Prompt = "> ";
         internal const string Start = "start";
+        internal const string StartMatch = "start match";
         internal const string Exit = "exit";
         internal const string Help = "help";
     }

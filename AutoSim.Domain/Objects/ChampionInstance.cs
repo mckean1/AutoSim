@@ -97,6 +97,16 @@ namespace AutoSim.Domain.Objects
         public int Gold { get; set; }
 
         /// <summary>
+        /// Gets or sets the champion kills during the round.
+        /// </summary>
+        public int Kills { get; set; }
+
+        /// <summary>
+        /// Gets or sets the champion deaths during the round.
+        /// </summary>
+        public int Deaths { get; set; }
+
+        /// <summary>
         /// Gets or sets the fractional experience accumulated by time-based rewards.
         /// </summary>
         public double ExperienceProgress { get; set; }

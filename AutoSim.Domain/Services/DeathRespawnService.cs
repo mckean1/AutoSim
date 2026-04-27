@@ -51,18 +51,49 @@ namespace AutoSim.Domain.Services
                     continue;
                 }
 
+                Guid? fightId = champion.FightId;
                 champion.IsDeathProcessed = true;
                 champion.Shields.Clear();
                 CancelCast(champion);
                 champion.FightId = null;
                 champion.CurrentFightPosition = null;
                 champion.RespawnTimer = _settings.RespawnDurationSeconds;
-                GetTeam(state, champion.TeamSide == TeamSide.Blue ? TeamSide.Red : TeamSide.Blue).KillScore++;
+                champion.Deaths++;
+                TeamSide scoringSide = champion.TeamSide == TeamSide.Blue ? TeamSide.Red : TeamSide.Blue;
+                GetTeam(state, scoringSide).KillScore++;
 
                 if (killer is not null && killer.IsAlive && killer.TeamSide != champion.TeamSide)
                 {
-                    _progressionService.AddExperience(killer, _settings.KillXp);
+                    killer.Kills++;
+                    _progressionService.AddExperience(killer, _settings.KillXp, state);
                 }
+
+                ChampionInstance? validKiller = killer is not null
+                    && killer.IsAlive
+                    && killer.TeamSide != champion.TeamSide
+                        ? killer
+                        : null;
+
+                state.AddEvent(new RoundEvent
+                {
+                    TimeSeconds = state.CurrentTime,
+                    Type = RoundEventType.ChampionKilled,
+                    Lane = champion.Lane.ToString(),
+                    FightId = fightId,
+                    TeamSide = scoringSide.ToString(),
+                    SourceTeamSide = validKiller?.TeamSide.ToString(),
+                    SourceChampionId = validKiller?.Definition.Id,
+                    SourceChampionName = validKiller?.Definition.Name,
+                    SourcePlayerId = validKiller?.PlayerId,
+                    ChampionId = validKiller?.Definition.Id,
+                    TargetChampionId = champion.Definition.Id,
+                    TargetTeamSide = champion.TeamSide.ToString(),
+                    TargetChampionName = champion.Definition.Name,
+                    TargetPlayerId = champion.PlayerId,
+                    Message = validKiller is not null
+                        ? $"{RoundEventFormatter.ChampionName(validKiller)} killed {RoundEventFormatter.ChampionName(champion)}."
+                        : $"{RoundEventFormatter.ChampionName(champion)} was killed."
+                });
             }
         }
 
@@ -93,10 +124,50 @@ namespace AutoSim.Domain.Services
         }
 
         /// <summary>
+        /// Respawns champions whose respawn timer has completed and logs respawn events.
+        /// </summary>
+        /// <param name="state">The round state.</param>
+        public void RespawnReadyChampions(RoundState state)
+        {
+            ArgumentNullException.ThrowIfNull(state);
+
+            foreach (ChampionInstance champion in state.AllChampions.Where(
+                champion => !champion.IsAlive && champion.IsDeathProcessed && champion.RespawnTimer <= 0))
+            {
+                champion.CurrentHealth = champion.MaximumHealth;
+                champion.JustRespawned = true;
+                champion.IsDeathProcessed = false;
+                champion.Shields.Clear();
+                champion.Position = champion.Definition.DefaultPosition;
+                champion.Intent = ChampionIntent.Laning;
+                champion.FightId = null;
+                champion.CurrentFightPosition = null;
+                CancelCast(champion);
+                champion.AbilityCooldown = champion.Definition.Ability.Cooldown;
+                champion.AttackTimer = champion.Definition.AttackSpeed > 0 ? 1.0 / champion.Definition.AttackSpeed : 0;
+                champion.LanePosition = champion.TeamSide == TeamSide.Blue ? -100.0 : 100.0;
+
+                state.AddEvent(new RoundEvent
+                {
+                    TimeSeconds = state.CurrentTime,
+                    Type = RoundEventType.ChampionRespawned,
+                    Lane = champion.Lane.ToString(),
+                    TeamSide = champion.TeamSide.ToString(),
+                    ChampionId = champion.Definition.Id,
+                    SourceTeamSide = champion.TeamSide.ToString(),
+                    SourceChampionId = champion.Definition.Id,
+                    SourceChampionName = champion.Definition.Name,
+                    SourcePlayerId = champion.PlayerId,
+                    Message = $"{RoundEventFormatter.ChampionName(champion)} respawned."
+                });
+            }
+        }
+
+        /// <summary>
         /// Updates retreating and laning intent based on current health.
         /// </summary>
         /// <param name="champions">The champions to evaluate.</param>
-        public void UpdateRetreatIntents(IEnumerable<ChampionInstance> champions)
+        public void UpdateRetreatIntents(IEnumerable<ChampionInstance> champions, RoundState? state = null)
         {
             ArgumentNullException.ThrowIfNull(champions);
 
@@ -110,6 +181,21 @@ namespace AutoSim.Domain.Services
                 {
                     champion.Intent = ChampionIntent.Retreating;
                     CancelCast(champion);
+
+                    state?.AddEvent(new RoundEvent
+                    {
+                        TimeSeconds = state.CurrentTime,
+                        Type = RoundEventType.ChampionRetreated,
+                        Lane = champion.Lane.ToString(),
+                        FightId = champion.FightId,
+                        TeamSide = champion.TeamSide.ToString(),
+                        ChampionId = champion.Definition.Id,
+                        SourceTeamSide = champion.TeamSide.ToString(),
+                        SourceChampionId = champion.Definition.Id,
+                        SourceChampionName = champion.Definition.Name,
+                        SourcePlayerId = champion.PlayerId,
+                        Message = $"{RoundEventFormatter.ChampionName(champion)} began retreating."
+                    });
                 }
                 else if (champion.Intent == ChampionIntent.Retreating && champion.CurrentHealth >= champion.MaximumHealth)
                 {

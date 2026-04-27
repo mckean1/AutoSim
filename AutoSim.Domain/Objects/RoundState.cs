@@ -53,14 +53,25 @@ namespace AutoSim.Domain.Objects
         public RoundSettings Settings { get; }
 
         /// <summary>
-        /// Gets the optional event log.
+        /// Gets the structured round events.
         /// </summary>
-        public IList<string> EventLog { get; } = [];
+        public IList<RoundEvent> Events { get; } = [];
 
         /// <summary>
         /// Gets all champions in the round.
         /// </summary>
         public IReadOnlyList<ChampionInstance> AllChampions =>
             BlueTeam.Champions.Concat(RedTeam.Champions).ToList();
+
+        /// <summary>
+        /// Adds a structured round event at the current round time.
+        /// </summary>
+        /// <param name="roundEvent">The event to add.</param>
+        public void AddEvent(RoundEvent roundEvent)
+        {
+            ArgumentNullException.ThrowIfNull(roundEvent);
+
+            Events.Add(roundEvent with { TimeSeconds = CurrentTime });
+        }
     }
 }

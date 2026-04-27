@@ -1,5 +1,7 @@
+using AutoSim.Domain.Objects;
+using AutoSim.Domain.Services;
 using ConsoleApp.Constants;
-using ConsoleApp.Enums;
+using ConsoleApp.Services;
 
 namespace ConsoleApp.Objects
 {
@@ -10,7 +12,8 @@ namespace ConsoleApp.Objects
     {
         private string _command;
         private string _previousCommand;
-        private ScreenState _screenState;
+        private readonly RoundLogWriter _roundLogWriter;
+        private readonly RoundSummaryRenderer _roundSummaryRenderer;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="ConsoleApplication"/> class.
@@ -19,7 +22,8 @@ namespace ConsoleApp.Objects
         {
             _command = string.Empty;
             _previousCommand = string.Empty;
-            _screenState = ScreenState.Initialization;
+            _roundLogWriter = new RoundLogWriter();
+            _roundSummaryRenderer = new RoundSummaryRenderer();
         }
 
         /// <summary>
@@ -66,19 +70,17 @@ namespace ConsoleApp.Objects
                 Environment.Exit(0);
             }
 
-            if (_screenState == ScreenState.Initialization && IsStartCommand())
+            if (IsStartCommand())
             {
-                _screenState = ScreenState.Main;
+                StartMatch();
+                _previousCommand = _command;
+                _command = string.Empty;
+                return;
             }
 
-            if (_screenState == ScreenState.Initialization && IsHelpCommand())
+            if (IsHelpCommand())
             {
-                Console.WriteLine("  start - Starts the game.");
-                Console.WriteLine("  exit  - Exits AutoSim.");
-            }
-
-            if (_screenState == ScreenState.Main && IsHelpCommand())
-            {
+                Console.WriteLine("  start match - Starts a match.");
                 Console.WriteLine("  exit  - Exits AutoSim.");
             }
 
@@ -113,9 +115,24 @@ namespace ConsoleApp.Objects
             Console.Write($"{ConsoleConstants.Prompt}{_command}");
         }
 
-        private bool IsStartCommand() => string.Equals(_command, ConsoleConstants.Start, StringComparison.Ordinal);
+        private bool IsStartCommand() =>
+            string.Equals(_command, ConsoleConstants.Start, StringComparison.Ordinal)
+            || string.Equals(_command, ConsoleConstants.StartMatch, StringComparison.Ordinal);
         private bool IsHelpCommand() => string.Equals(_command, ConsoleConstants.Help, StringComparison.Ordinal);
         private bool IsExitCommand() => string.Equals(_command, ConsoleConstants.Exit, StringComparison.Ordinal);
         private void Redraw() => Console.Clear();
+
+        private void StartMatch()
+        {
+            int seed = Environment.TickCount;
+            IReadOnlyList<ChampionDefinition> catalog = ChampionCatalog.GetDefaultChampions();
+            IReadOnlyList<ChampionDefinition> blueRoster = catalog.ToList();
+            IReadOnlyList<ChampionDefinition> redRoster = catalog.Reverse().ToList();
+            RoundResult result = new RoundEngine().Simulate(blueRoster, redRoster, seed);
+            string logPath = _roundLogWriter.WriteEvents(result.Events, seed);
+            string summary = _roundSummaryRenderer.Render("Blue Team", "Red Team", result, logPath);
+
+            Console.Write(summary);
+        }
     }
 }

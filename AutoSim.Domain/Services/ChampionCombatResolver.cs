@@ -15,15 +15,17 @@ namespace AutoSim.Domain.Services
         /// <param name="allChampions">All champions in the match.</param>
         /// <param name="activeChampions">Champions currently participating in the active fight.</param>
         /// <param name="rng">The seeded match random source.</param>
+        /// <param name="state">The optional round state used for event logging.</param>
         public static void ResolveAttack(
             ChampionInstance source,
             IEnumerable<ChampionInstance> allChampions,
             IEnumerable<ChampionInstance> activeChampions,
-            IMatchRandom rng)
+            IMatchRandom rng,
+            RoundState? state = null)
         {
             ArgumentNullException.ThrowIfNull(source);
 
-            ResolveAttackEffects(source, source.Definition.Attack.Effects, allChampions, activeChampions, rng);
+            ResolveAttackEffects(source, source.Definition.Attack.Effects, allChampions, activeChampions, rng, state);
         }
 
         /// <summary>
@@ -33,15 +35,17 @@ namespace AutoSim.Domain.Services
         /// <param name="allChampions">All champions in the match.</param>
         /// <param name="activeChampions">Champions currently participating in the active fight.</param>
         /// <param name="rng">The seeded match random source.</param>
+        /// <param name="state">The optional round state used for event logging.</param>
         public static void ResolveAbility(
             ChampionInstance source,
             IEnumerable<ChampionInstance> allChampions,
             IEnumerable<ChampionInstance> activeChampions,
-            IMatchRandom rng)
+            IMatchRandom rng,
+            RoundState? state = null)
         {
             ArgumentNullException.ThrowIfNull(source);
 
-            ResolveAbilityEffects(source, source.Definition.Ability.Effects, allChampions, activeChampions, rng);
+            ResolveAbilityEffects(source, source.Definition.Ability.Effects, allChampions, activeChampions, rng, state);
         }
 
         private static void ResolveAttackEffects(
@@ -49,13 +53,14 @@ namespace AutoSim.Domain.Services
             IEnumerable<AttackEffect> effects,
             IEnumerable<ChampionInstance> allChampions,
             IEnumerable<ChampionInstance> activeChampions,
-            IMatchRandom rng)
+            IMatchRandom rng,
+            RoundState? state)
         {
             ArgumentNullException.ThrowIfNull(effects);
 
             foreach (AttackEffect effect in effects)
             {
-                CombatEffectResolver.ResolveAttackEffect(source, effect, allChampions, activeChampions, rng);
+                CombatEffectResolver.ResolveAttackEffect(source, effect, allChampions, activeChampions, rng, state);
             }
         }
 
@@ -64,13 +69,14 @@ namespace AutoSim.Domain.Services
             IEnumerable<AbilityEffect> effects,
             IEnumerable<ChampionInstance> allChampions,
             IEnumerable<ChampionInstance> activeChampions,
-            IMatchRandom rng)
+            IMatchRandom rng,
+            RoundState? state)
         {
             ArgumentNullException.ThrowIfNull(effects);
 
             foreach (AbilityEffect effect in effects)
             {
-                CombatEffectResolver.ResolveAbilityEffect(source, effect, allChampions, activeChampions, rng);
+                CombatEffectResolver.ResolveAbilityEffect(source, effect, allChampions, activeChampions, rng, state);
             }
         }
     }

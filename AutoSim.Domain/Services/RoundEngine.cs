@@ -74,6 +74,12 @@ namespace AutoSim.Domain.Services
             int seed)
         {
             RoundState state = CreateState(blueRoster, redRoster, seed);
+            state.AddEvent(new RoundEvent
+            {
+                TimeSeconds = 0,
+                Type = RoundEventType.RoundStarted,
+                Message = "Round started."
+            });
 
             while (state.CurrentTime < state.Settings.RoundDurationSeconds)
             {
@@ -84,7 +90,18 @@ namespace AutoSim.Domain.Services
                 Tick(state, deltaSeconds);
             }
 
-            return CreateResult(state);
+            _fightService.CloseActiveFightsForRoundEnd(state);
+            TeamSide winningSide = DetermineWinner(state);
+            state.AddEvent(new RoundEvent
+            {
+                TimeSeconds = state.CurrentTime,
+                Type = RoundEventType.RoundEnded,
+                TeamSide = winningSide.ToString(),
+                SourceTeamSide = winningSide.ToString(),
+                Message = $"Round ended. Winner: {winningSide}."
+            });
+
+            return CreateResultCore(state, winningSide);
         }
 
         /// <summary>
@@ -109,12 +126,12 @@ namespace AutoSim.Domain.Services
             }
 
             _deathRespawnService.ProcessDeaths(state, null);
-            DeathRespawnService.RespawnReadyChampions(allChampions);
-            _deathRespawnService.UpdateRetreatIntents(allChampions);
+            _deathRespawnService.RespawnReadyChampions(state);
+            _deathRespawnService.UpdateRetreatIntents(allChampions, state);
             _movementService.MoveChampions(state, deltaSeconds);
             _recoveryService.ApplyRegeneration(allChampions, deltaSeconds);
             _progressionService.ApplyFarming(allChampions, deltaSeconds);
-            _deathRespawnService.UpdateRetreatIntents(allChampions);
+            _deathRespawnService.UpdateRetreatIntents(allChampions, state);
             _fightService.CreateFights(state);
             _fightService.JoinFights(state);
             _combatActionService.ResolveCombatActions(state);
@@ -161,13 +178,16 @@ namespace AutoSim.Domain.Services
             return champion;
         }
 
-        private RoundResult CreateResult(RoundState state)
+        private RoundResult CreateResult(RoundState state) => CreateResultCore(state, null);
+
+        private RoundResult CreateResultCore(RoundState state, TeamSide? knownWinningSide)
         {
             int blueGold = state.BlueTeam.Champions.Sum(champion => champion.Gold);
             int redGold = state.RedTeam.Champions.Sum(champion => champion.Gold);
             int blueExperience = state.BlueTeam.Champions.Sum(champion => champion.Experience);
             int redExperience = state.RedTeam.Champions.Sum(champion => champion.Experience);
-            TeamSide winningSide = DetermineWinner(state, blueGold, redGold, blueExperience, redExperience);
+            TeamSide winningSide = knownWinningSide
+                ?? DetermineWinner(state, blueGold, redGold, blueExperience, redExperience);
 
             return new RoundResult
             {
@@ -179,8 +199,36 @@ namespace AutoSim.Domain.Services
                 BlueExperience = blueExperience,
                 RedExperience = redExperience,
                 Duration = state.CurrentTime,
-                EventLog = state.EventLog.ToList()
+                ActiveFightCount = state.ActiveFights.Count,
+                ChampionSummaries = state.AllChampions.Select(CreateChampionSummary).ToList(),
+                Events = state.Events.ToList()
             };
+        }
+
+        private static ChampionRoundSummary CreateChampionSummary(ChampionInstance champion) =>
+            new()
+            {
+                ChampionId = champion.Definition.Id,
+                ChampionName = champion.Definition.Name,
+                TeamSide = champion.TeamSide,
+                Lane = champion.Lane,
+                Level = champion.Level,
+                Experience = champion.Experience,
+                Gold = champion.Gold,
+                Kills = champion.Kills,
+                Deaths = champion.Deaths,
+                FinalHealth = champion.CurrentHealth,
+                MaximumHealth = champion.MaximumHealth
+            };
+
+        private static TeamSide DetermineWinner(RoundState state)
+        {
+            int blueGold = state.BlueTeam.Champions.Sum(champion => champion.Gold);
+            int redGold = state.RedTeam.Champions.Sum(champion => champion.Gold);
+            int blueExperience = state.BlueTeam.Champions.Sum(champion => champion.Experience);
+            int redExperience = state.RedTeam.Champions.Sum(champion => champion.Experience);
+
+            return DetermineWinner(state, blueGold, redGold, blueExperience, redExperience);
         }
 
         private static TeamSide DetermineWinner(
