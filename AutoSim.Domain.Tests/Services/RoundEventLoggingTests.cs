@@ -15,7 +15,7 @@ namespace AutoSim.Domain.Tests.Services
                 TickRateSeconds = 0.1
             };
 
-            RoundResult result = new RoundEngine(settings).Simulate([CreateDefinition()], [CreateDefinition()], seed: 0);
+            RoundResult result = Simulate([CreateDefinition()], [CreateDefinition()], settings);
 
             Assert.Multiple(() =>
             {
@@ -139,10 +139,10 @@ namespace AutoSim.Domain.Tests.Services
                 TickRateSeconds = 0.1
             };
 
-            RoundResult result = new RoundEngine(settings).Simulate(
+            RoundResult result = Simulate(
                 [CreateDefinition(attackEffects: [])],
                 [CreateDefinition(attackEffects: [])],
-                seed: 0);
+                settings);
 
             List<RoundEvent> events = result.Events.ToList();
             RoundEvent fightEnded = events.Last(roundEvent => roundEvent.Type == RoundEventType.FightEnded);
@@ -305,10 +305,10 @@ namespace AutoSim.Domain.Tests.Services
                 TickRateSeconds = 0.1
             };
 
-            RoundResult result = new RoundEngine(settings).Simulate(
+            RoundResult result = Simulate(
                 [CreateDefinition(attackEffects: [])],
                 [CreateDefinition(attackEffects: [])],
-                seed: 0);
+                settings);
 
             IReadOnlyList<RoundEvent> fightStarted = result.Events
                 .Where(roundEvent => roundEvent.Type == RoundEventType.FightStarted)
@@ -337,16 +337,19 @@ namespace AutoSim.Domain.Tests.Services
         [Test]
         public void Simulate_RoundResult_IncludesChampionSummariesAndMatchingTeamTotals()
         {
-            RoundResult result = new RoundEngine(new RoundSettings
+            RoundResult result = Simulate(
+                [CreateDefinition()],
+                [CreateDefinition()],
+                new RoundSettings
             {
                 RoundDurationSeconds = 0.2,
                 TickRateSeconds = 0.1
-            }).Simulate([CreateDefinition()], [CreateDefinition()], seed: 0);
+            });
 
             ChampionRoundSummary summary = result.ChampionSummaries.First();
             Assert.Multiple(() =>
             {
-                Assert.That(result.ChampionSummaries, Has.Count.EqualTo(2));
+                Assert.That(result.ChampionSummaries, Has.Count.EqualTo(10));
                 Assert.That(summary.Level, Is.GreaterThanOrEqualTo(1));
                 Assert.That(summary.Experience, Is.GreaterThanOrEqualTo(0));
                 Assert.That(summary.Gold, Is.GreaterThanOrEqualTo(0));
@@ -367,8 +370,22 @@ namespace AutoSim.Domain.Tests.Services
             IReadOnlyList<ChampionDefinition> blue,
             IReadOnlyList<ChampionDefinition> red,
             RoundSettings? settings = null,
+            int seed = 0)
+        {
+            int activeBlueCount = blue.Count;
+            int activeRedCount = red.Count;
+            RoundState state = new RoundEngine(settings).CreateState(CreateRoster(blue, red), seed);
+            DeactivateFillers(state.BlueTeam.Champions.Skip(activeBlueCount));
+            DeactivateFillers(state.RedTeam.Champions.Skip(activeRedCount));
+            return state;
+        }
+
+        private static RoundResult Simulate(
+            IReadOnlyList<ChampionDefinition> blue,
+            IReadOnlyList<ChampionDefinition> red,
+            RoundSettings settings,
             int seed = 0) =>
-            new RoundEngine(settings).CreateState(blue, red, seed);
+            new RoundEngine(settings).Simulate(CreateRoster(blue, red), seed);
 
         private static void Tick(RoundState state, double deltaSeconds) =>
             new RoundEngine(state.Settings).Tick(state, deltaSeconds);
@@ -383,6 +400,36 @@ namespace AutoSim.Domain.Tests.Services
                 attackPower: attackPower,
                 attackEffects: attackEffects,
                 abilityEffects: abilityEffects);
+
+        private static RoundRoster CreateRoster(
+            IReadOnlyList<ChampionDefinition> blue,
+            IReadOnlyList<ChampionDefinition> red) =>
+            new()
+            {
+                BlueChampions = PadRoster(blue),
+                RedChampions = PadRoster(red)
+            };
+
+        private static IReadOnlyList<ChampionDefinition> PadRoster(IReadOnlyList<ChampionDefinition> champions)
+        {
+            List<ChampionDefinition> roster = champions.ToList();
+            while (roster.Count < 5)
+            {
+                roster.Add(CreateDefinition(attackEffects: []));
+            }
+
+            return roster;
+        }
+
+        private static void DeactivateFillers(IEnumerable<ChampionInstance> champions)
+        {
+            foreach (ChampionInstance champion in champions)
+            {
+                champion.CurrentHealth = 0;
+                champion.RespawnTimer = 999;
+                champion.IsDeathProcessed = true;
+            }
+        }
 
         private static AttackEffect CreateAttackEffect(
             CombatEffectType type,

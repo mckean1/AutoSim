@@ -10,6 +10,8 @@ namespace ConsoleApp.Objects
     /// </summary>
     public sealed class ConsoleApplication
     {
+        private const int TeamRosterSize = 5;
+
         private string _command;
         private string _previousCommand;
         private readonly RoundLogWriter _roundLogWriter;
@@ -125,14 +127,33 @@ namespace ConsoleApp.Objects
         private void StartMatch()
         {
             int seed = Environment.TickCount;
-            IReadOnlyList<ChampionDefinition> catalog = ChampionCatalog.GetDefaultChampions();
-            IReadOnlyList<ChampionDefinition> blueRoster = catalog.ToList();
-            IReadOnlyList<ChampionDefinition> redRoster = catalog.Reverse().ToList();
-            RoundResult result = new RoundEngine().Simulate(blueRoster, redRoster, seed);
+            RoundRoster roster = CreateTemporaryRoundRoster(ChampionCatalog.GetDefaultChampions());
+            RoundResult result = new RoundEngine().Simulate(roster, seed);
             string logPath = _roundLogWriter.WriteEvents(result.Events, seed);
             string summary = _roundSummaryRenderer.Render("Blue Team", "Red Team", result, logPath);
 
             Console.Write(summary);
+        }
+
+        /// <summary>
+        /// Creates the deterministic temporary 5v5 roster used before draft exists.
+        /// </summary>
+        /// <param name="catalog">The available champion catalog.</param>
+        /// <returns>The selected temporary round roster.</returns>
+        public static RoundRoster CreateTemporaryRoundRoster(IReadOnlyList<ChampionDefinition> catalog)
+        {
+            ArgumentNullException.ThrowIfNull(catalog);
+
+            if (catalog.Count < TeamRosterSize * 2)
+            {
+                throw new ArgumentException("Catalog must contain at least 10 champions to create a temporary round roster.", nameof(catalog));
+            }
+
+            return new RoundRoster
+            {
+                BlueChampions = catalog.Take(TeamRosterSize).ToList(),
+                RedChampions = catalog.Skip(TeamRosterSize).Take(TeamRosterSize).ToList()
+            };
         }
     }
 }

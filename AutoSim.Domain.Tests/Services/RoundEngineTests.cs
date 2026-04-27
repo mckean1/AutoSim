@@ -487,7 +487,7 @@ namespace AutoSim.Domain.Tests.Services
             };
             RoundEngine engine = new(settings);
 
-            RoundResult result = engine.Simulate([CreateDefinition()], [CreateDefinition()], seed: 0);
+            RoundResult result = engine.Simulate(CreateRoster([CreateDefinition()], [CreateDefinition()]), seed: 0);
 
             Assert.Multiple(() =>
             {
@@ -531,12 +531,123 @@ namespace AutoSim.Domain.Tests.Services
             Assert.That(InvokeResult(randomState).WinningSide, Is.EqualTo(TeamSide.Red));
         }
 
+        [Test]
+        public void CreateState_ValidUniqueRoster_CreatesFiveChampionsPerTeam()
+        {
+            RoundState state = new RoundEngine().CreateState(CreateRoster(CreateDefinitions(5), CreateDefinitions(5)), seed: 0);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(state.BlueTeam.Champions, Has.Count.EqualTo(5));
+                Assert.That(state.RedTeam.Champions, Has.Count.EqualTo(5));
+                Assert.That(state.AllChampions, Has.Count.EqualTo(10));
+            });
+        }
+
+        [TestCase(4, 5, "Blue roster must contain exactly 5 champions.")]
+        [TestCase(6, 5, "Blue roster must contain exactly 5 champions.")]
+        [TestCase(5, 4, "Red roster must contain exactly 5 champions.")]
+        [TestCase(5, 6, "Red roster must contain exactly 5 champions.")]
+        public void CreateState_InvalidRosterSize_ThrowsClearException(
+            int blueCount,
+            int redCount,
+            string expectedMessage)
+        {
+            RoundRoster roster = CreateRawRoster(CreateDefinitions(blueCount), CreateDefinitions(redCount));
+
+            ArgumentException exception = Assert.Throws<ArgumentException>(() => new RoundEngine().CreateState(roster, seed: 0))!;
+
+            Assert.That(exception.Message, Does.Contain(expectedMessage));
+        }
+
+        [Test]
+        public void CreateState_DuplicateWithinBlue_ThrowsClearException()
+        {
+            ChampionDefinition duplicate = CreateDefinition();
+            RoundRoster roster = CreateRoster(
+                [duplicate, duplicate, .. CreateDefinitions(3)],
+                CreateDefinitions(5));
+
+            ArgumentException exception = Assert.Throws<ArgumentException>(() => new RoundEngine().CreateState(roster, seed: 0))!;
+
+            Assert.That(exception.Message, Does.Contain($"Duplicate champion id in round roster: {duplicate.Id}."));
+        }
+
+        [Test]
+        public void CreateState_DuplicateWithinRed_ThrowsClearException()
+        {
+            ChampionDefinition duplicate = CreateDefinition();
+            RoundRoster roster = CreateRoster(
+                CreateDefinitions(5),
+                [duplicate, duplicate, .. CreateDefinitions(3)]);
+
+            ArgumentException exception = Assert.Throws<ArgumentException>(() => new RoundEngine().CreateState(roster, seed: 0))!;
+
+            Assert.That(exception.Message, Does.Contain($"Duplicate champion id in round roster: {duplicate.Id}."));
+        }
+
+        [Test]
+        public void CreateState_DuplicateAcrossTeams_ThrowsClearException()
+        {
+            ChampionDefinition duplicate = CreateDefinition();
+            RoundRoster roster = CreateRoster(
+                [duplicate, .. CreateDefinitions(4)],
+                [duplicate, .. CreateDefinitions(4)]);
+
+            ArgumentException exception = Assert.Throws<ArgumentException>(() => new RoundEngine().CreateState(roster, seed: 0))!;
+
+            Assert.That(exception.Message, Does.Contain("Champion ids must be unique across both teams."));
+        }
+
+        [Test]
+        public void CreateState_ValidRoster_AssignsDeterministicLanes()
+        {
+            RoundState state = new RoundEngine().CreateState(CreateRoster(CreateDefinitions(5), CreateDefinitions(5)), seed: 0);
+            Lane[] expectedLanes = [Lane.Top, Lane.Top, Lane.Mid, Lane.Bottom, Lane.Bottom];
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(state.BlueTeam.Champions.Select(champion => champion.Lane), Is.EqualTo(expectedLanes));
+                Assert.That(state.RedTeam.Champions.Select(champion => champion.Lane), Is.EqualTo(expectedLanes));
+            });
+        }
+
+        [Test]
+        public void Simulate_RoundResult_IncludesOnlyActiveRoundChampions()
+        {
+            RoundResult result = new RoundEngine(new RoundSettings
+            {
+                RoundDurationSeconds = 0.2,
+                TickRateSeconds = 0.1
+            }).Simulate(CreateRoster(CreateDefinitions(5), CreateDefinitions(5)), seed: 0);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(result.ChampionSummaries, Has.Count.EqualTo(10));
+                Assert.That(result.ChampionSummaries.Count(champion => champion.TeamSide == TeamSide.Blue), Is.EqualTo(5));
+                Assert.That(result.ChampionSummaries.Count(champion => champion.TeamSide == TeamSide.Red), Is.EqualTo(5));
+                Assert.That(result.BlueGold, Is.EqualTo(result.ChampionSummaries
+                    .Where(champion => champion.TeamSide == TeamSide.Blue)
+                    .Sum(champion => champion.Gold)));
+                Assert.That(result.RedExperience, Is.EqualTo(result.ChampionSummaries
+                    .Where(champion => champion.TeamSide == TeamSide.Red)
+                    .Sum(champion => champion.Experience)));
+            });
+        }
+
         private static RoundState CreateState(
             IReadOnlyList<ChampionDefinition> blue,
             IReadOnlyList<ChampionDefinition> red,
             RoundSettings? settings = null,
-            int seed = 0) =>
-            new RoundEngine(settings).CreateState(blue, red, seed);
+            int seed = 0)
+        {
+            int activeBlueCount = blue.Count;
+            int activeRedCount = red.Count;
+            RoundState state = new RoundEngine(settings).CreateState(CreateRoster(blue, red), seed);
+            DeactivateFillers(state.BlueTeam.Champions.Skip(activeBlueCount));
+            DeactivateFillers(state.RedTeam.Champions.Skip(activeRedCount));
+            return state;
+        }
 
         private static void Tick(RoundState state, double deltaSeconds) =>
             new RoundEngine(state.Settings).Tick(state, deltaSeconds);
@@ -553,6 +664,50 @@ namespace AutoSim.Domain.Tests.Services
                 attackEffects: attackEffects,
                 abilityEffects: abilityEffects,
                 abilityCastTime: abilityCastTime);
+
+        private static RoundRoster CreateRoster(
+            IReadOnlyList<ChampionDefinition> blue,
+            IReadOnlyList<ChampionDefinition> red) =>
+            new()
+            {
+                BlueChampions = PadRoster(blue),
+                RedChampions = PadRoster(red)
+            };
+
+        private static RoundRoster CreateRawRoster(
+            IReadOnlyList<ChampionDefinition> blue,
+            IReadOnlyList<ChampionDefinition> red) =>
+            new()
+            {
+                BlueChampions = blue,
+                RedChampions = red
+            };
+
+        private static IReadOnlyList<ChampionDefinition> CreateDefinitions(int count) =>
+            Enumerable.Range(0, count)
+                .Select(_ => CreateDefinition())
+                .ToList();
+
+        private static IReadOnlyList<ChampionDefinition> PadRoster(IReadOnlyList<ChampionDefinition> champions)
+        {
+            List<ChampionDefinition> roster = champions.ToList();
+            while (roster.Count < 5)
+            {
+                roster.Add(CreateDefinition());
+            }
+
+            return roster;
+        }
+
+        private static void DeactivateFillers(IEnumerable<ChampionInstance> champions)
+        {
+            foreach (ChampionInstance champion in champions)
+            {
+                champion.CurrentHealth = 0;
+                champion.RespawnTimer = 999;
+                champion.IsDeathProcessed = true;
+            }
+        }
 
         private static AttackEffect CreateAttackEffect(
             CombatEffectType type,

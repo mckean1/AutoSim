@@ -8,6 +8,8 @@ namespace AutoSim.Domain.Services
     /// </summary>
     public sealed class RoundEngine
     {
+        private const int TeamRosterSize = 5;
+
         private static readonly Lane[] LaneAssignments =
         [
             Lane.Top,
@@ -55,8 +57,28 @@ namespace AutoSim.Domain.Services
             ArgumentNullException.ThrowIfNull(blueRoster);
             ArgumentNullException.ThrowIfNull(redRoster);
 
-            TeamRoundState blueTeam = CreateTeam(TeamSide.Blue, blueRoster, "blue");
-            TeamRoundState redTeam = CreateTeam(TeamSide.Red, redRoster, "red");
+            return CreateState(
+                new RoundRoster
+                {
+                    BlueChampions = blueRoster.ToList(),
+                    RedChampions = redRoster.ToList()
+                },
+                seed);
+        }
+
+        /// <summary>
+        /// Creates initial round state for the selected round roster.
+        /// </summary>
+        /// <param name="roster">The selected round roster.</param>
+        /// <param name="seed">The deterministic round seed.</param>
+        /// <returns>The initialized round state.</returns>
+        public RoundState CreateState(RoundRoster roster, int seed)
+        {
+            ArgumentNullException.ThrowIfNull(roster);
+            ValidateRoster(roster);
+
+            TeamRoundState blueTeam = CreateTeam(TeamSide.Blue, roster.BlueChampions, "blue");
+            TeamRoundState redTeam = CreateTeam(TeamSide.Red, roster.RedChampions, "red");
 
             return new RoundState(blueTeam, redTeam, new SeededMatchRandom(seed), _settings);
         }
@@ -73,7 +95,27 @@ namespace AutoSim.Domain.Services
             IEnumerable<ChampionDefinition> redRoster,
             int seed)
         {
-            RoundState state = CreateState(blueRoster, redRoster, seed);
+            ArgumentNullException.ThrowIfNull(blueRoster);
+            ArgumentNullException.ThrowIfNull(redRoster);
+
+            return Simulate(
+                new RoundRoster
+                {
+                    BlueChampions = blueRoster.ToList(),
+                    RedChampions = redRoster.ToList()
+                },
+                seed);
+        }
+
+        /// <summary>
+        /// Simulates one round to completion.
+        /// </summary>
+        /// <param name="roster">The selected round roster.</param>
+        /// <param name="seed">The deterministic round seed.</param>
+        /// <returns>The round result.</returns>
+        public RoundResult Simulate(RoundRoster roster, int seed)
+        {
+            RoundState state = CreateState(roster, seed);
             state.AddEvent(new RoundEvent
             {
                 TimeSeconds = 0,
@@ -151,7 +193,7 @@ namespace AutoSim.Domain.Services
 
         private static TeamRoundState CreateTeam(
             TeamSide side,
-            IEnumerable<ChampionDefinition> roster,
+            IReadOnlyList<ChampionDefinition> roster,
             string playerId)
         {
             List<ChampionInstance> champions = roster
@@ -176,6 +218,51 @@ namespace AutoSim.Domain.Services
             champion.CurrentFightPosition = null;
             champion.Position = definition.DefaultPosition;
             return champion;
+        }
+
+        private static void ValidateRoster(RoundRoster roster)
+        {
+            if (roster.BlueChampions.Count != TeamRosterSize)
+            {
+                throw new ArgumentException("Blue roster must contain exactly 5 champions.", nameof(roster));
+            }
+
+            if (roster.RedChampions.Count != TeamRosterSize)
+            {
+                throw new ArgumentException("Red roster must contain exactly 5 champions.", nameof(roster));
+            }
+
+            string? duplicateBlueId = FindDuplicateChampionId(roster.BlueChampions);
+            if (duplicateBlueId is not null)
+            {
+                throw new ArgumentException($"Duplicate champion id in round roster: {duplicateBlueId}.", nameof(roster));
+            }
+
+            string? duplicateRedId = FindDuplicateChampionId(roster.RedChampions);
+            if (duplicateRedId is not null)
+            {
+                throw new ArgumentException($"Duplicate champion id in round roster: {duplicateRedId}.", nameof(roster));
+            }
+
+            HashSet<string> blueIds = roster.BlueChampions.Select(champion => champion.Id).ToHashSet(StringComparer.Ordinal);
+            if (roster.RedChampions.Any(champion => blueIds.Contains(champion.Id)))
+            {
+                throw new ArgumentException("Champion ids must be unique across both teams.", nameof(roster));
+            }
+        }
+
+        private static string? FindDuplicateChampionId(IReadOnlyList<ChampionDefinition> champions)
+        {
+            HashSet<string> ids = new(StringComparer.Ordinal);
+            foreach (ChampionDefinition champion in champions)
+            {
+                if (!ids.Add(champion.Id))
+                {
+                    return champion.Id;
+                }
+            }
+
+            return null;
         }
 
         private RoundResult CreateResult(RoundState state) => CreateResultCore(state, null);
