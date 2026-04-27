@@ -44,6 +44,8 @@ namespace ConsoleApp.Tests.Services
                 Assert.That(output, Does.Contain("Blue: 2 kills"));
                 Assert.That(output, Does.Contain("Ironclad"));
                 Assert.That(output, Does.Contain("logs/rounds/test.jsonl"));
+                Assert.That(output, Does.Contain("Analyze with:"));
+                Assert.That(output, Does.Contain("analyze round logs/rounds/test.jsonl"));
                 Assert.That(output, Does.Not.Contain("This detailed event should not be dumped."));
             });
         }

@@ -19,18 +19,32 @@ namespace ConsoleApp.Objects
 
         private string _command;
         private string _previousCommand;
+        private readonly RoundAnalysisRenderer _roundAnalysisRenderer;
+        private readonly AggregateRoundAnalysisRenderer _aggregateRoundAnalysisRenderer;
+        private readonly AggregateRoundAnalyzer _aggregateRoundAnalyzer;
+        private readonly string _logDirectory;
+        private readonly RoundLogAnalyzer _roundLogAnalyzer;
+        private readonly RoundLogReader _roundLogReader;
         private readonly RoundLogWriter _roundLogWriter;
         private readonly RoundSummaryRenderer _roundSummaryRenderer;
+        private readonly Func<int> _seedProvider;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="ConsoleApplication"/> class.
         /// </summary>
-        public ConsoleApplication()
+        public ConsoleApplication(string logDirectory = "logs/rounds", Func<int>? seedProvider = null)
         {
             _command = string.Empty;
             _previousCommand = string.Empty;
-            _roundLogWriter = new RoundLogWriter();
+            _logDirectory = logDirectory;
+            _roundAnalysisRenderer = new RoundAnalysisRenderer();
+            _aggregateRoundAnalysisRenderer = new AggregateRoundAnalysisRenderer();
+            _aggregateRoundAnalyzer = new AggregateRoundAnalyzer();
+            _roundLogAnalyzer = new RoundLogAnalyzer();
+            _roundLogReader = new RoundLogReader();
+            _roundLogWriter = new RoundLogWriter(logDirectory);
             _roundSummaryRenderer = new RoundSummaryRenderer();
+            _seedProvider = seedProvider ?? (() => Environment.TickCount);
         }
 
         /// <summary>
@@ -77,22 +91,51 @@ namespace ConsoleApp.Objects
                 Environment.Exit(0);
             }
 
+            Console.Write(ExecuteCommand(_command));
+
+            _previousCommand = _command;
+            _command = string.Empty;
+        }
+
+        /// <summary>
+        /// Executes a command and returns console output.
+        /// </summary>
+        /// <param name="command">The command text.</param>
+        /// <returns>The command output.</returns>
+        public string ExecuteCommand(string command)
+        {
+            _command = command ?? string.Empty;
+
             if (IsStartCommand())
             {
-                StartMatch();
-                _previousCommand = _command;
-                _command = string.Empty;
-                return;
+                return StartMatch();
+            }
+
+            if (IsSimulateRoundsCommand())
+            {
+                return SimulateRounds();
+            }
+
+            if (IsAnalyzeRoundsCommand())
+            {
+                return AnalyzeRounds();
+            }
+
+            if (IsAnalyzeRoundCommand())
+            {
+                return AnalyzeRound();
             }
 
             if (IsHelpCommand())
             {
-                Console.WriteLine("  start match - Starts a match.");
-                Console.WriteLine("  exit  - Exits AutoSim.");
+                return "  start match - Starts a match." + Environment.NewLine
+                    + "  simulate rounds <number> - Simulates many rounds." + Environment.NewLine
+                    + "  analyze round <log path> - Analyzes a saved round log." + Environment.NewLine
+                    + "  analyze rounds - Analyzes all saved round logs." + Environment.NewLine
+                    + "  exit  - Exits AutoSim." + Environment.NewLine;
             }
 
-            _previousCommand = _command;
-            _command = string.Empty;
+            return string.Empty;
         }
 
         private void HandleBackspace()
@@ -125,19 +168,114 @@ namespace ConsoleApp.Objects
         private bool IsStartCommand() =>
             string.Equals(_command, ConsoleConstants.Start, StringComparison.Ordinal)
             || string.Equals(_command, ConsoleConstants.StartMatch, StringComparison.Ordinal);
+        private bool IsAnalyzeRoundCommand() =>
+            _command.StartsWith("analyze round ", StringComparison.OrdinalIgnoreCase);
+        private bool IsAnalyzeRoundsCommand() =>
+            string.Equals(_command, "analyze rounds", StringComparison.OrdinalIgnoreCase);
+        private bool IsSimulateRoundsCommand() =>
+            _command.StartsWith("simulate rounds", StringComparison.OrdinalIgnoreCase);
         private bool IsHelpCommand() => string.Equals(_command, ConsoleConstants.Help, StringComparison.Ordinal);
         private bool IsExitCommand() => string.Equals(_command, ConsoleConstants.Exit, StringComparison.Ordinal);
         private void Redraw() => Console.Clear();
 
-        private void StartMatch()
+        private string StartMatch()
         {
-            int seed = Environment.TickCount;
+            int seed = _seedProvider();
             RoundRoster roster = CreateTemporaryRoundRoster(ChampionCatalog.GetDefaultChampions(), seed);
             RoundResult result = new RoundEngine().Simulate(roster, seed);
             string logPath = _roundLogWriter.WriteEvents(result.Events, seed);
-            string summary = _roundSummaryRenderer.Render("Blue Team", "Red Team", result, logPath);
+            return _roundSummaryRenderer.Render("Blue Team", "Red Team", result, logPath);
+        }
 
-            Console.Write(summary);
+        private string AnalyzeRound()
+        {
+            string logPath = _command["analyze round ".Length..].Trim();
+
+            try
+            {
+                IReadOnlyList<RoundEvent> events = _roundLogReader.ReadEvents(logPath);
+                RoundAnalysis analysis = _roundLogAnalyzer.Analyze(events);
+                return _roundAnalysisRenderer.Render(logPath, analysis);
+            }
+            catch (RoundLogReadException exception)
+            {
+                return exception.Message + Environment.NewLine;
+            }
+        }
+
+        private string SimulateRounds()
+        {
+            string value = _command["simulate rounds".Length..].Trim();
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return "Usage: simulate rounds <number>" + Environment.NewLine;
+            }
+
+            if (!int.TryParse(value, out int count))
+            {
+                return "Round count must be a positive whole number." + Environment.NewLine;
+            }
+
+            if (count <= 0)
+            {
+                return "Round count must be greater than zero." + Environment.NewLine;
+            }
+
+            int baseSeed = _seedProvider();
+            AggregateRoundAnalysis analysis = new RoundBatchSimulator(_roundLogWriter).Simulate(count, baseSeed);
+            string report = _aggregateRoundAnalysisRenderer.Render("Aggregate Results", _logDirectory, analysis);
+            return $"Simulated {count} rounds." + Environment.NewLine
+                + $"Logs written to: {_logDirectory}" + Environment.NewLine
+                + Environment.NewLine
+                + report
+                + Environment.NewLine
+                + "Analyze all logs with:" + Environment.NewLine
+                + "analyze rounds" + Environment.NewLine;
+        }
+
+        private string AnalyzeRounds()
+        {
+            if (!Directory.Exists(_logDirectory))
+            {
+                return $"Round log folder was not found: {_logDirectory}" + Environment.NewLine;
+            }
+
+            IReadOnlyList<string> logPaths = Directory.GetFiles(_logDirectory, "*.jsonl").OrderBy(path => path).ToList();
+            if (logPaths.Count == 0)
+            {
+                return $"No round logs found in {_logDirectory}." + Environment.NewLine;
+            }
+
+            List<RoundAnalysis> analyses = [];
+            List<string> skippedLogs = [];
+            foreach (string logPath in logPaths)
+            {
+                try
+                {
+                    IReadOnlyList<RoundEvent> events = _roundLogReader.ReadEvents(logPath);
+                    if (events.Count == 0)
+                    {
+                        skippedLogs.Add($"{Path.GetFileName(logPath)}: No events found.");
+                        continue;
+                    }
+
+                    analyses.Add(_roundLogAnalyzer.Analyze(events));
+                }
+                catch (RoundLogReadException exception)
+                {
+                    skippedLogs.Add($"{Path.GetFileName(logPath)}: {exception.Message}");
+                }
+            }
+
+            if (analyses.Count == 0)
+            {
+                AggregateRoundAnalysis emptyAnalysis = _aggregateRoundAnalyzer.Analyze([], logPaths.Count, skippedLogs);
+                return "No valid round logs were found." + Environment.NewLine
+                    + _aggregateRoundAnalysisRenderer.Render("Aggregate Round Analysis", _logDirectory, emptyAnalysis);
+            }
+
+            AggregateRoundAnalysis analysis = _aggregateRoundAnalyzer.Analyze(analyses, logPaths.Count, skippedLogs);
+            return _aggregateRoundAnalysisRenderer.Render("Aggregate Round Analysis", _logDirectory, analysis);
         }
 
         /// <summary>

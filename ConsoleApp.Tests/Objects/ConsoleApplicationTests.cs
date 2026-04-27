@@ -130,6 +130,80 @@ namespace ConsoleApp.Tests.Objects
             Assert.That(exception.Message, Does.Contain("Catalog must contain at least 10 champions"));
         }
 
+        [TestCase("simulate rounds", "Usage: simulate rounds <number>")]
+        [TestCase("simulate rounds nope", "positive whole number")]
+        [TestCase("simulate rounds 0", "greater than zero")]
+        [TestCase("simulate rounds -1", "greater than zero")]
+        public void ExecuteCommand_InvalidSimulateRoundsInput_PrintsFriendlyError(string command, string expected)
+        {
+            string directory = CreateTempDirectory();
+            ConsoleApplication application = new(directory, () => 1000);
+
+            string output = application.ExecuteCommand(command);
+
+            Assert.That(output, Does.Contain(expected));
+        }
+
+        [Test]
+        public void ExecuteCommand_SimulateRounds_WritesRequestedLogsAndPrintsAggregateResults()
+        {
+            string directory = CreateTempDirectory();
+            ConsoleApplication application = new(directory, () => 1000);
+
+            string output = application.ExecuteCommand("simulate rounds 2");
+            string[] logs = Directory.GetFiles(directory, "*.jsonl");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(logs, Has.Length.EqualTo(2));
+                Assert.That(output, Does.Contain("Simulated 2 rounds."));
+                Assert.That(output, Does.Contain("Aggregate Results"));
+                Assert.That(output, Does.Contain("Analyze all logs with:"));
+                Assert.That(output, Does.Contain("analyze rounds"));
+            });
+        }
+
+        [Test]
+        public void ExecuteCommand_AnalyzeRounds_MissingFolder_PrintsFriendlyMessage()
+        {
+            string directory = Path.Combine(Path.GetTempPath(), $"autosim-missing-{Guid.NewGuid():N}");
+            ConsoleApplication application = new(directory, () => 1000);
+
+            string output = application.ExecuteCommand("analyze rounds");
+
+            Assert.That(output, Does.Contain("Round log folder was not found"));
+        }
+
+        [Test]
+        public void ExecuteCommand_AnalyzeRounds_EmptyFolder_PrintsFriendlyMessage()
+        {
+            string directory = CreateTempDirectory();
+            ConsoleApplication application = new(directory, () => 1000);
+
+            string output = application.ExecuteCommand("analyze rounds");
+
+            Assert.That(output, Does.Contain("No round logs found"));
+        }
+
+        [Test]
+        public void ExecuteCommand_AnalyzeRounds_ValidAndMalformedLogs_PrintsAggregateAndSkippedLogs()
+        {
+            string directory = CreateTempDirectory();
+            ConsoleApplication application = new(directory, () => 1000);
+            application.ExecuteCommand("simulate rounds 1");
+            File.WriteAllText(Path.Combine(directory, "bad.jsonl"), "{bad json");
+
+            string output = application.ExecuteCommand("analyze rounds");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(output, Does.Contain("Aggregate Round Analysis"));
+                Assert.That(output, Does.Contain("Rounds analyzed: 1"));
+                Assert.That(output, Does.Contain("Skipped Logs"));
+                Assert.That(output, Does.Contain("bad.jsonl"));
+            });
+        }
+
         private static ChampionDefinition CreateDefinition(string id) =>
             new()
             {
@@ -171,6 +245,13 @@ namespace ConsoleApp.Tests.Objects
                     ]
                 }
             };
+
+        private static string CreateTempDirectory()
+        {
+            string directory = Path.Combine(Path.GetTempPath(), $"autosim-rounds-{Guid.NewGuid():N}");
+            Directory.CreateDirectory(directory);
+            return directory;
+        }
 
         private static void AssertRoleBalance(IReadOnlyList<ChampionDefinition> champions)
         {

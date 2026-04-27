@@ -73,6 +73,11 @@ namespace AutoSim.Domain.Objects
         public Guid? FightId { get; init; }
 
         /// <summary>
+        /// Gets the structured numeric amount for damage, healing, or shielding events.
+        /// </summary>
+        public int? Amount { get; init; }
+
+        /// <summary>
         /// Gets the team side associated with the event, when available.
         /// </summary>
         public string? TeamSide { get; init; }
@@ -81,6 +86,5 @@ namespace AutoSim.Domain.Objects
         /// Gets the source champion identifier, when available.
         /// </summary>
         public string? ChampionId { get; init; }
-
     }
 }

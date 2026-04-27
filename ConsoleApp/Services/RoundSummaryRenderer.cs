@@ -42,6 +42,9 @@ namespace ConsoleApp.Services
             writer.WriteLine();
             writer.WriteLine("Round log written to:");
             writer.WriteLine(logPath);
+            writer.WriteLine();
+            writer.WriteLine("Analyze with:");
+            writer.WriteLine($"analyze round {logPath}");
 
             return writer.ToString();
         }
