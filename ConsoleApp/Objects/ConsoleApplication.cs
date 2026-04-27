@@ -73,13 +73,13 @@ namespace ConsoleApp.Objects
 
             if (_screenState == ScreenState.Initialization && IsHelpCommand())
             {
-                Console.WriteLine($"  start - Starts the game.");
-                Console.WriteLine($"  exit  - Exits AutoSim.");
+                Console.WriteLine("  start - Starts the game.");
+                Console.WriteLine("  exit  - Exits AutoSim.");
             }
 
             if (_screenState == ScreenState.Main && IsHelpCommand())
             {
-                Console.WriteLine($"  exit  - Exits AutoSim.");
+                Console.WriteLine("  exit  - Exits AutoSim.");
             }
 
             _previousCommand = _command;

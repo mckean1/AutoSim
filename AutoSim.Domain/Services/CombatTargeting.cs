@@ -1,4 +1,5 @@
 using AutoSim.Domain.Enums;
+using AutoSim.Domain.Interfaces;
 using AutoSim.Domain.Objects;
 
 namespace AutoSim.Domain.Services
@@ -15,39 +16,35 @@ namespace AutoSim.Domain.Services
         /// <param name="effect">The effect being applied.</param>
         /// <param name="allChampions">All living and inactive champions in the match.</param>
         /// <param name="activeChampions">Champions currently participating in the active fight.</param>
-        /// <param name="selectIndex">Optional index selector for single-target selection.</param>
+        /// <param name="rng">The seeded match random source.</param>
         /// <returns>The selected living targets.</returns>
         public static IReadOnlyList<ChampionInstance> SelectTargets(
             ChampionInstance source,
             CombatEffect effect,
             IEnumerable<ChampionInstance> allChampions,
             IEnumerable<ChampionInstance> activeChampions,
-            Func<int, int>? selectIndex = null)
+            IMatchRandom rng)
         {
             ArgumentNullException.ThrowIfNull(source);
             ArgumentNullException.ThrowIfNull(effect);
             ArgumentNullException.ThrowIfNull(allChampions);
             ArgumentNullException.ThrowIfNull(activeChampions);
+            ArgumentNullException.ThrowIfNull(rng);
 
             List<ChampionInstance> allLivingChampions = allChampions.Where(champion => champion.IsAlive).ToList();
             List<ChampionInstance> activeLivingChampions = activeChampions.Where(champion => champion.IsAlive).ToList();
-            List<ChampionInstance> candidates = GetCandidates(source, effect.TargetMode, allLivingChampions, activeLivingChampions);
+            List<ChampionInstance> candidates = GetCandidates(
+                source,
+                effect.TargetMode,
+                allLivingChampions,
+                activeLivingChampions);
 
-            if (effect.TargetScope == TargetScope.All || candidates.Count <= 1)
+            if (effect.TargetScope == TargetScope.All || candidates.Count == 0)
             {
                 return candidates;
             }
 
-            int selectedIndex = selectIndex?.Invoke(candidates.Count) ?? 0;
-
-            if (selectedIndex < 0 || selectedIndex >= candidates.Count)
-            {
-                throw new ArgumentOutOfRangeException(
-                    nameof(selectIndex),
-                    $"Selected target index {selectedIndex} is outside the candidate range.");
-            }
-
-            return [candidates[selectedIndex]];
+            return [candidates[rng.Next(candidates.Count)]];
         }
 
         private static List<ChampionInstance> GetCandidates(
@@ -87,12 +84,16 @@ namespace AutoSim.Domain.Services
         private static List<ChampionInstance> GetAllies(
             ChampionInstance source,
             IEnumerable<ChampionInstance> champions) =>
-            champions.Where(champion => string.Equals(champion.PlayerId, source.PlayerId, StringComparison.Ordinal)).ToList();
+            champions
+                .Where(champion => string.Equals(champion.PlayerId, source.PlayerId, StringComparison.Ordinal))
+                .ToList();
 
         private static List<ChampionInstance> GetEnemies(
             ChampionInstance source,
             IEnumerable<ChampionInstance> champions) =>
-            champions.Where(champion => !string.Equals(champion.PlayerId, source.PlayerId, StringComparison.Ordinal)).ToList();
+            champions
+                .Where(champion => !string.Equals(champion.PlayerId, source.PlayerId, StringComparison.Ordinal))
+                .ToList();
 
         private static List<ChampionInstance> GetPositionWithFallback(
             IEnumerable<ChampionInstance> champions,

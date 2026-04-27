@@ -5,7 +5,14 @@ namespace AutoSim.Domain.Enums
     /// </summary>
     public enum TargetScope
     {
+        /// <summary>
+        /// Selects one valid target.
+        /// </summary>
         One,
+
+        /// <summary>
+        /// Selects all valid targets.
+        /// </summary>
         All
     }
 }

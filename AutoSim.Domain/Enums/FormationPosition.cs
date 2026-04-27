@@ -5,7 +5,14 @@ namespace AutoSim.Domain.Enums
     /// </summary>
     public enum FormationPosition
     {
+        /// <summary>
+        /// The champion is positioned in front.
+        /// </summary>
         Frontline,
+
+        /// <summary>
+        /// The champion is positioned in back.
+        /// </summary>
         Backline
     }
 }

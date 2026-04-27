@@ -25,7 +25,6 @@ namespace AutoSim.Domain.Tests.Services
             CombatEffectApplicator.ApplyDamage(target, 100);
 
             Assert.That(target.CurrentHealth, Is.EqualTo(1000));
-            Assert.That(target.Shields, Is.Empty);
         }
 
         [Test]
@@ -36,7 +35,6 @@ namespace AutoSim.Domain.Tests.Services
 
             CombatEffectApplicator.ApplyDamage(target, 40);
 
-            Assert.That(target.CurrentHealth, Is.EqualTo(1000));
             Assert.That(target.Shields.Single().Amount, Is.EqualTo(60));
         }
 
@@ -49,7 +47,39 @@ namespace AutoSim.Domain.Tests.Services
             CombatEffectApplicator.ApplyDamage(target, 175);
 
             Assert.That(target.CurrentHealth, Is.EqualTo(925));
+        }
+
+        [Test]
+        public void ApplyDamage_DepletedShield_RemovesShield()
+        {
+            ChampionInstance target = CreateInstance();
+            CombatEffectApplicator.ApplyShield(target, 100, 5.0);
+
+            CombatEffectApplicator.ApplyDamage(target, 100);
+
             Assert.That(target.Shields, Is.Empty);
+        }
+
+        [Test]
+        public void ApplyDamage_DeadChampion_DoesNothing()
+        {
+            ChampionInstance target = CreateInstance();
+            target.CurrentHealth = 0;
+
+            CombatEffectApplicator.ApplyDamage(target, 100);
+
+            Assert.That(target.CurrentHealth, Is.EqualTo(0));
+        }
+
+        [Test]
+        public void ApplyHeal_DamagedChampion_RestoresHealth()
+        {
+            ChampionInstance target = CreateInstance();
+            target.CurrentHealth = 700;
+
+            CombatEffectApplicator.ApplyHeal(target, 150);
+
+            Assert.That(target.CurrentHealth, Is.EqualTo(850));
         }
 
         [Test]
@@ -73,33 +103,7 @@ namespace AutoSim.Domain.Tests.Services
 
             CombatEffectApplicator.ApplyHeal(target, 50);
 
-            Assert.That(target.CurrentHealth, Is.EqualTo(950));
             Assert.That(target.Shields.Single().Amount, Is.EqualTo(60));
-        }
-
-        [Test]
-        public void TickShields_DurationExpires_RemovesShield()
-        {
-            ChampionInstance target = CreateInstance();
-            CombatEffectApplicator.ApplyShield(target, 100, 5.0);
-
-            CombatEffectApplicator.TickShields(target, 5.0);
-
-            Assert.That(target.Shields, Is.Empty);
-        }
-
-        [Test]
-        public void TickShields_MultipleShields_StackAndExpireIndependently()
-        {
-            ChampionInstance target = CreateInstance();
-            CombatEffectApplicator.ApplyShield(target, 100, 3.0);
-            CombatEffectApplicator.ApplyShield(target, 200, 5.0);
-
-            CombatEffectApplicator.TickShields(target, 3.0);
-
-            Assert.That(target.Shields, Has.Count.EqualTo(1));
-            Assert.That(target.Shields.Single().Amount, Is.EqualTo(200));
-            Assert.That(target.Shields.Single().Duration, Is.EqualTo(2.0));
         }
 
         [Test]
@@ -114,6 +118,16 @@ namespace AutoSim.Domain.Tests.Services
         }
 
         [Test]
+        public void ApplyShield_LivingChampion_AddsActiveShield()
+        {
+            ChampionInstance target = CreateInstance();
+
+            CombatEffectApplicator.ApplyShield(target, 100, 5.0);
+
+            Assert.That(target.Shields.Single().Amount, Is.EqualTo(100));
+        }
+
+        [Test]
         public void ApplyShield_DeadChampion_DoesNothing()
         {
             ChampionInstance target = CreateInstance();
@@ -125,9 +139,82 @@ namespace AutoSim.Domain.Tests.Services
         }
 
         [Test]
+        public void ApplyShield_MultipleApplications_StacksShields()
+        {
+            ChampionInstance target = CreateInstance();
+
+            CombatEffectApplicator.ApplyShield(target, 100, 5.0);
+            CombatEffectApplicator.ApplyShield(target, 200, 5.0);
+
+            Assert.That(target.Shields, Has.Count.EqualTo(2));
+        }
+
+        [Test]
+        public void ApplyDamage_MultipleShields_ConsumesOldestShieldFirst()
+        {
+            ChampionInstance target = CreateInstance();
+            CombatEffectApplicator.ApplyShield(target, 100, 5.0);
+            CombatEffectApplicator.ApplyShield(target, 200, 5.0);
+
+            CombatEffectApplicator.ApplyDamage(target, 150);
+
+            Assert.That(target.Shields.First().Amount, Is.EqualTo(150));
+        }
+
+        [Test]
+        public void TickShields_MultipleShields_DurationsTickDownIndependently()
+        {
+            ChampionInstance target = CreateInstance();
+            CombatEffectApplicator.ApplyShield(target, 100, 3.0);
+            CombatEffectApplicator.ApplyShield(target, 200, 5.0);
+
+            CombatEffectApplicator.TickShields(target, 1.0);
+
+            Assert.That(target.Shields.Select(shield => shield.Duration), Is.EqualTo(new[] { 2.0, 4.0 }));
+        }
+
+        [Test]
+        public void TickShields_DurationExpires_RemovesShield()
+        {
+            ChampionInstance target = CreateInstance();
+            CombatEffectApplicator.ApplyShield(target, 100, 5.0);
+
+            CombatEffectApplicator.TickShields(target, 5.0);
+
+            Assert.That(target.Shields, Is.Empty);
+        }
+
+        [Test]
+        public void TickShields_DepletedShieldExists_RemovesShield()
+        {
+            ChampionInstance target = CreateInstance();
+            target.Shields.Add(new ActiveShield
+            {
+                Amount = 0,
+                Duration = 5.0
+            });
+
+            CombatEffectApplicator.TickShields(target, 0);
+
+            Assert.That(target.Shields, Is.Empty);
+        }
+
+        [Test]
+        public void TickShields_MultipleShields_StackAndExpireIndependently()
+        {
+            ChampionInstance target = CreateInstance();
+            CombatEffectApplicator.ApplyShield(target, 100, 3.0);
+            CombatEffectApplicator.ApplyShield(target, 200, 5.0);
+
+            CombatEffectApplicator.TickShields(target, 3.0);
+
+            Assert.That(target.Shields.Single().Amount, Is.EqualTo(200));
+        }
+
+        [Test]
         public void Create_DefinitionHasDefaults_InitializesPositionAndCurrentHealth()
         {
-            ChampionDefinition definition = CreateDefinition(FormationPosition.Backline);
+            ChampionDefinition definition = TestChampionFactory.CreateDefinition(FormationPosition.Backline);
 
             ChampionInstance instance = ChampionInstanceFactory.Create(definition, "player-one");
 
@@ -135,49 +222,6 @@ namespace AutoSim.Domain.Tests.Services
             Assert.That(instance.CurrentHealth, Is.EqualTo(1000));
         }
 
-        private static ChampionInstance CreateInstance() =>
-            ChampionInstanceFactory.Create(CreateDefinition(FormationPosition.Frontline), "player-one");
-
-        private static ChampionDefinition CreateDefinition(FormationPosition defaultPosition) =>
-            new ChampionDefinition
-            {
-                Id = "test-fighter",
-                Name = "Test Fighter",
-                Role = ChampionRole.Fighter,
-                DefaultPosition = defaultPosition,
-                Health = 1000,
-                Power = 100,
-                AttackSpeed = 1.0,
-                Attack = new ChampionAttack
-                {
-                    Effects =
-                    [
-                        new CombatEffect
-                        {
-                            Type = CombatEffectType.Damage,
-                            Value = 100,
-                            TargetMode = TargetMode.EnemyFrontline,
-                            TargetScope = TargetScope.One
-                        }
-                    ]
-                },
-                Ability = new ChampionAbility
-                {
-                    Id = "test-ability",
-                    Name = "Test Ability",
-                    Cooldown = 5.0,
-                    Effects =
-                    [
-                        new CombatEffect
-                        {
-                            Type = CombatEffectType.Shield,
-                            Value = 100,
-                            TargetMode = TargetMode.Self,
-                            TargetScope = TargetScope.One,
-                            Duration = 5.0
-                        }
-                    ]
-                }
-            };
+        private static ChampionInstance CreateInstance() => TestChampionFactory.CreateInstance();
     }
 }
