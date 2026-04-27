@@ -9,7 +9,7 @@ namespace AutoSim.Domain.Tests
             string playerId = "player-one",
             FormationPosition defaultPosition = FormationPosition.Frontline,
             int health = 1000,
-            int power = 100,
+            int power = 0,
             double attackSpeed = 1.0,
             double abilityCooldown = 5.0,
             double abilityCastTime = 0.5,
@@ -26,7 +26,13 @@ namespace AutoSim.Domain.Tests
                 attackEffects,
                 abilityCombatEffects);
 
-            return ChampionInstanceFactory.Create(definition, playerId);
+            ChampionInstance champion = ChampionInstanceFactory.Create(definition, playerId);
+            champion.TeamSide = string.Equals(playerId, "player-two", StringComparison.Ordinal)
+                || string.Equals(playerId, "red", StringComparison.Ordinal)
+                    ? TeamSide.Red
+                    : TeamSide.Blue;
+
+            return champion;
         }
 
         public static ChampionDefinition CreateDefinition(

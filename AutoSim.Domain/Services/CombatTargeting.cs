@@ -31,13 +31,11 @@ namespace AutoSim.Domain.Services
             ArgumentNullException.ThrowIfNull(activeChampions);
             ArgumentNullException.ThrowIfNull(rng);
 
-            List<ChampionInstance> allLivingChampions = allChampions.Where(champion => champion.IsAlive).ToList();
-            List<ChampionInstance> activeLivingChampions = activeChampions.Where(champion => champion.IsAlive).ToList();
-            List<ChampionInstance> candidates = GetCandidates(
+            IReadOnlyList<ChampionInstance> candidates = SelectCandidatePool(
                 source,
-                effect.TargetMode,
-                allLivingChampions,
-                activeLivingChampions);
+                effect,
+                allChampions,
+                activeChampions);
 
             if (effect.TargetScope == TargetScope.All || candidates.Count == 0)
             {
@@ -45,6 +43,35 @@ namespace AutoSim.Domain.Services
             }
 
             return [candidates[rng.Next(candidates.Count)]];
+        }
+
+        /// <summary>
+        /// Selects all valid candidates for an effect before target-scope random selection.
+        /// </summary>
+        /// <param name="source">The champion applying the effect.</param>
+        /// <param name="effect">The effect being evaluated.</param>
+        /// <param name="allChampions">All living and inactive champions in the match.</param>
+        /// <param name="activeChampions">Champions currently participating in the active fight.</param>
+        /// <returns>The full valid living candidate pool.</returns>
+        public static IReadOnlyList<ChampionInstance> SelectCandidatePool(
+            ChampionInstance source,
+            CombatEffect effect,
+            IEnumerable<ChampionInstance> allChampions,
+            IEnumerable<ChampionInstance> activeChampions)
+        {
+            ArgumentNullException.ThrowIfNull(source);
+            ArgumentNullException.ThrowIfNull(effect);
+            ArgumentNullException.ThrowIfNull(allChampions);
+            ArgumentNullException.ThrowIfNull(activeChampions);
+
+            List<ChampionInstance> allLivingChampions = allChampions.Where(champion => champion.IsAlive).ToList();
+            List<ChampionInstance> activeLivingChampions = activeChampions.Where(champion => champion.IsAlive).ToList();
+
+            return GetCandidates(
+                source,
+                effect.TargetMode,
+                allLivingChampions,
+                activeLivingChampions);
         }
 
         private static List<ChampionInstance> GetCandidates(
@@ -85,14 +112,14 @@ namespace AutoSim.Domain.Services
             ChampionInstance source,
             IEnumerable<ChampionInstance> champions) =>
             champions
-                .Where(champion => string.Equals(champion.PlayerId, source.PlayerId, StringComparison.Ordinal))
+                .Where(champion => champion.TeamSide == source.TeamSide)
                 .ToList();
 
         private static List<ChampionInstance> GetEnemies(
             ChampionInstance source,
             IEnumerable<ChampionInstance> champions) =>
             champions
-                .Where(champion => !string.Equals(champion.PlayerId, source.PlayerId, StringComparison.Ordinal))
+                .Where(champion => champion.TeamSide != source.TeamSide)
                 .ToList();
 
         private static List<ChampionInstance> GetPositionWithFallback(

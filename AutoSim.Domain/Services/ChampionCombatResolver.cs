@@ -23,7 +23,7 @@ namespace AutoSim.Domain.Services
         {
             ArgumentNullException.ThrowIfNull(source);
 
-            ResolveEffects(source, source.Definition.Attack.Effects, allChampions, activeChampions, rng);
+            ResolveEffects(source, source.Definition.Attack.Effects, allChampions, activeChampions, rng, source.CurrentPower);
         }
 
         /// <summary>
@@ -41,7 +41,7 @@ namespace AutoSim.Domain.Services
         {
             ArgumentNullException.ThrowIfNull(source);
 
-            ResolveEffects(source, source.Definition.Ability.Effects, allChampions, activeChampions, rng);
+            ResolveEffects(source, source.Definition.Ability.Effects, allChampions, activeChampions, rng, 0);
         }
 
         private static void ResolveEffects(
@@ -49,13 +49,14 @@ namespace AutoSim.Domain.Services
             IEnumerable<CombatEffect> effects,
             IEnumerable<ChampionInstance> allChampions,
             IEnumerable<ChampionInstance> activeChampions,
-            IMatchRandom rng)
+            IMatchRandom rng,
+            int valueBonus)
         {
             ArgumentNullException.ThrowIfNull(effects);
 
             foreach (CombatEffect effect in effects)
             {
-                CombatEffectResolver.ResolveEffect(source, effect, allChampions, activeChampions, rng);
+                CombatEffectResolver.ResolveEffect(source, effect, allChampions, activeChampions, rng, valueBonus);
             }
         }
     }

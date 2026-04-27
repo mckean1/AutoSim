@@ -36,7 +36,7 @@ namespace AutoSim.Domain.Tests.Services
             ChampionInstance champion = TestChampionFactory.CreateInstance(health: 100);
             champion.CurrentHealth = 50;
 
-            engine.AwardExperience(champion, 2000);
+            engine.AwardExperience(champion, 4500);
             CombatEffectApplicator.ApplyHeal(champion, 1000);
 
             Assert.Multiple(() =>
@@ -44,7 +44,7 @@ namespace AutoSim.Domain.Tests.Services
                 Assert.That(champion.Level, Is.EqualTo(10));
                 Assert.That(champion.MaximumHealth, Is.EqualTo(190));
                 Assert.That(champion.CurrentHealth, Is.EqualTo(190));
-                Assert.That(champion.CurrentPower, Is.EqualTo(118));
+                Assert.That(champion.CurrentPower, Is.EqualTo(18));
             });
         }
 

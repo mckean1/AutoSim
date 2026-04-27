@@ -135,6 +135,102 @@ namespace AutoSim.Domain.Tests.Services
                 Is.EqualTo(new[] { 100, 850, 850 }));
         }
 
+        [Test]
+        public void ResolveAttack_DamageEffect_AddsCurrentPower()
+        {
+            CombatEffect damage = CreateEffect(CombatEffectType.Damage, 5, TargetMode.EnemyAny, TargetScope.One);
+            ChampionInstance source = TestChampionFactory.CreateInstance("player-one", power: 20, attackEffects: [damage]);
+            ChampionInstance enemy = TestChampionFactory.CreateInstance("player-two");
+
+            ChampionCombatResolver.ResolveAttack(source, [source, enemy], [source, enemy], new QueueMatchRandom(0));
+
+            Assert.That(enemy.CurrentHealth, Is.EqualTo(975));
+        }
+
+        [Test]
+        public void ResolveAttack_HealEffect_AddsCurrentPower()
+        {
+            CombatEffect heal = CreateEffect(CombatEffectType.Heal, 5, TargetMode.Self, TargetScope.One);
+            ChampionInstance source = TestChampionFactory.CreateInstance("player-one", power: 20, attackEffects: [heal]);
+            source.CurrentHealth = 900;
+
+            ChampionCombatResolver.ResolveAttack(source, [source], [source], new QueueMatchRandom(0));
+
+            Assert.That(source.CurrentHealth, Is.EqualTo(925));
+        }
+
+        [Test]
+        public void ResolveAttack_ShieldEffect_AddsCurrentPower()
+        {
+            CombatEffect shield = CreateEffect(CombatEffectType.Shield, 5, TargetMode.Self, TargetScope.One, 5.0);
+            ChampionInstance source = TestChampionFactory.CreateInstance("player-one", power: 20, attackEffects: [shield]);
+
+            ChampionCombatResolver.ResolveAttack(source, [source], [source], new QueueMatchRandom(0));
+
+            Assert.That(source.Shields.Single().Amount, Is.EqualTo(25));
+        }
+
+        [Test]
+        public void ResolveAbility_DamageEffect_DoesNotAddCurrentPower()
+        {
+            CombatEffect damage = CreateEffect(CombatEffectType.Damage, 35, TargetMode.EnemyAny, TargetScope.One);
+            ChampionInstance source = TestChampionFactory.CreateInstance("player-one", power: 20, abilityCombatEffects: [damage]);
+            ChampionInstance enemy = TestChampionFactory.CreateInstance("player-two");
+
+            ChampionCombatResolver.ResolveAbility(source, [source, enemy], [source, enemy], new QueueMatchRandom(0));
+
+            Assert.That(enemy.CurrentHealth, Is.EqualTo(965));
+        }
+
+        [Test]
+        public void ResolveAbility_HealEffect_DoesNotAddCurrentPower()
+        {
+            CombatEffect heal = CreateEffect(CombatEffectType.Heal, 35, TargetMode.Self, TargetScope.One);
+            ChampionInstance source = TestChampionFactory.CreateInstance("player-one", power: 20, abilityCombatEffects: [heal]);
+            source.CurrentHealth = 900;
+
+            ChampionCombatResolver.ResolveAbility(source, [source], [source], new QueueMatchRandom(0));
+
+            Assert.That(source.CurrentHealth, Is.EqualTo(935));
+        }
+
+        [Test]
+        public void ResolveAbility_ShieldEffect_DoesNotAddCurrentPower()
+        {
+            CombatEffect shield = CreateEffect(CombatEffectType.Shield, 35, TargetMode.Self, TargetScope.One, 5.0);
+            ChampionInstance source = TestChampionFactory.CreateInstance("player-one", power: 20, abilityCombatEffects: [shield]);
+
+            ChampionCombatResolver.ResolveAbility(source, [source], [source], new QueueMatchRandom(0));
+
+            Assert.That(source.Shields.Single().Amount, Is.EqualTo(35));
+        }
+
+        [Test]
+        public void ResolveAttack_AfterLevelUp_UsesIncreasedCurrentPower()
+        {
+            CombatEffect damage = CreateEffect(CombatEffectType.Damage, 5, TargetMode.EnemyAny, TargetScope.One);
+            ChampionInstance source = TestChampionFactory.CreateInstance("player-one", attackEffects: [damage]);
+            ChampionInstance enemy = TestChampionFactory.CreateInstance("player-two");
+            new ChampionProgressionService(new RoundSettings()).AddExperience(source, 100);
+
+            ChampionCombatResolver.ResolveAttack(source, [source, enemy], [source, enemy], new QueueMatchRandom(0));
+
+            Assert.That(enemy.CurrentHealth, Is.EqualTo(993));
+        }
+
+        [Test]
+        public void ResolveAbility_AfterLevelUp_DoesNotUseIncreasedCurrentPower()
+        {
+            CombatEffect damage = CreateEffect(CombatEffectType.Damage, 35, TargetMode.EnemyAny, TargetScope.One);
+            ChampionInstance source = TestChampionFactory.CreateInstance("player-one", abilityCombatEffects: [damage]);
+            ChampionInstance enemy = TestChampionFactory.CreateInstance("player-two");
+            new ChampionProgressionService(new RoundSettings()).AddExperience(source, 100);
+
+            ChampionCombatResolver.ResolveAbility(source, [source, enemy], [source, enemy], new QueueMatchRandom(0));
+
+            Assert.That(enemy.CurrentHealth, Is.EqualTo(965));
+        }
+
         private static CombatEffect CreateEffect(
             CombatEffectType type,
             int value,

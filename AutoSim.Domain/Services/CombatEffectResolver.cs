@@ -24,7 +24,8 @@ namespace AutoSim.Domain.Services
             CombatEffect effect,
             IEnumerable<ChampionInstance> allChampions,
             IEnumerable<ChampionInstance> activeChampions,
-            IMatchRandom rng)
+            IMatchRandom rng,
+            int valueBonus = 0)
         {
             ArgumentNullException.ThrowIfNull(source);
             ArgumentNullException.ThrowIfNull(effect);
@@ -41,22 +42,24 @@ namespace AutoSim.Domain.Services
 
             foreach (ChampionInstance target in targets)
             {
-                ApplyEffect(effect, target);
+                ApplyEffect(effect, target, valueBonus);
             }
         }
 
-        private static void ApplyEffect(CombatEffect effect, ChampionInstance target)
+        private static void ApplyEffect(CombatEffect effect, ChampionInstance target, int valueBonus)
         {
+            int value = effect.Value + valueBonus;
+
             switch (effect.Type)
             {
                 case CombatEffectType.Damage:
-                    CombatEffectApplicator.ApplyDamage(target, effect.Value);
+                    CombatEffectApplicator.ApplyDamage(target, value);
                     break;
                 case CombatEffectType.Heal:
-                    CombatEffectApplicator.ApplyHeal(target, effect.Value);
+                    CombatEffectApplicator.ApplyHeal(target, value);
                     break;
                 case CombatEffectType.Shield:
-                    CombatEffectApplicator.ApplyShield(target, effect.Value, effect.Duration ?? DefaultShieldDuration);
+                    CombatEffectApplicator.ApplyShield(target, value, effect.Duration ?? DefaultShieldDuration);
                     break;
                 default:
                     throw new ArgumentOutOfRangeException(

@@ -156,6 +156,86 @@ namespace AutoSim.Domain.Tests.Services
         }
 
         [Test]
+        public void SelectTargets_DifferentPlayerIdSameTeamSide_TreatsChampionsAsAllies()
+        {
+            ChampionInstance source = TestChampionFactory.CreateInstance("player-one");
+            ChampionInstance ally = TestChampionFactory.CreateInstance("different-player");
+            source.TeamSide = TeamSide.Blue;
+            ally.TeamSide = TeamSide.Blue;
+            CombatEffect effect = CreateEffect(TargetMode.GlobalAlly, TargetScope.All);
+
+            IReadOnlyList<ChampionInstance> targets = CombatTargeting.SelectTargets(
+                source,
+                effect,
+                [source, ally],
+                [source, ally],
+                new QueueMatchRandom(0));
+
+            Assert.That(targets, Is.EquivalentTo(new[] { source, ally }));
+        }
+
+        [Test]
+        public void SelectTargets_SamePlayerIdDifferentTeamSide_TreatsChampionsAsEnemies()
+        {
+            ChampionInstance source = TestChampionFactory.CreateInstance("shared-player");
+            ChampionInstance enemy = TestChampionFactory.CreateInstance("shared-player");
+            source.TeamSide = TeamSide.Blue;
+            enemy.TeamSide = TeamSide.Red;
+            CombatEffect effect = CreateEffect(TargetMode.GlobalEnemy, TargetScope.All);
+
+            IReadOnlyList<ChampionInstance> targets = CombatTargeting.SelectTargets(
+                source,
+                effect,
+                [source, enemy],
+                [source, enemy],
+                new QueueMatchRandom(0));
+
+            Assert.That(targets, Is.EquivalentTo(new[] { enemy }));
+        }
+
+        [Test]
+        public void SelectTargets_GlobalAlly_UsesTeamSideInsteadOfPlayerId()
+        {
+            ChampionInstance source = TestChampionFactory.CreateInstance("source");
+            ChampionInstance sameSideDifferentPlayer = TestChampionFactory.CreateInstance("different-player");
+            ChampionInstance samePlayerOpposingSide = TestChampionFactory.CreateInstance("source");
+            source.TeamSide = TeamSide.Blue;
+            sameSideDifferentPlayer.TeamSide = TeamSide.Blue;
+            samePlayerOpposingSide.TeamSide = TeamSide.Red;
+            CombatEffect effect = CreateEffect(TargetMode.GlobalAlly, TargetScope.All);
+
+            IReadOnlyList<ChampionInstance> targets = CombatTargeting.SelectTargets(
+                source,
+                effect,
+                [source, sameSideDifferentPlayer, samePlayerOpposingSide],
+                [source],
+                new QueueMatchRandom(0));
+
+            Assert.That(targets, Is.EquivalentTo(new[] { source, sameSideDifferentPlayer }));
+        }
+
+        [Test]
+        public void SelectTargets_GlobalEnemy_UsesTeamSideInsteadOfPlayerId()
+        {
+            ChampionInstance source = TestChampionFactory.CreateInstance("source");
+            ChampionInstance sameSideDifferentPlayer = TestChampionFactory.CreateInstance("different-player");
+            ChampionInstance samePlayerOpposingSide = TestChampionFactory.CreateInstance("source");
+            source.TeamSide = TeamSide.Blue;
+            sameSideDifferentPlayer.TeamSide = TeamSide.Blue;
+            samePlayerOpposingSide.TeamSide = TeamSide.Red;
+            CombatEffect effect = CreateEffect(TargetMode.GlobalEnemy, TargetScope.All);
+
+            IReadOnlyList<ChampionInstance> targets = CombatTargeting.SelectTargets(
+                source,
+                effect,
+                [source, sameSideDifferentPlayer, samePlayerOpposingSide],
+                [source],
+                new QueueMatchRandom(0));
+
+            Assert.That(targets, Is.EquivalentTo(new[] { samePlayerOpposingSide }));
+        }
+
+        [Test]
         public void SelectTargets_GlobalAll_IncludesLivingChampionsFromBothFullRosters()
         {
             TargetScenario scenario = CreateScenario();
