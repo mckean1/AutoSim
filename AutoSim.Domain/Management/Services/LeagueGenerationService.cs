@@ -42,12 +42,20 @@ namespace AutoSim.Domain.Management.Services
         /// <param name="tierName">The tier name.</param>
         /// <param name="region">The league region.</param>
         /// <param name="humanPlacement">The human placement, if this league should contain the human coach.</param>
+        /// <param name="nameGenerationService">The name generation service.</param>
+        /// <param name="humanCoachName">The human coach name.</param>
+        /// <param name="humanTeamName">The human team name.</param>
         /// <returns>The generated league bundle.</returns>
         public LeagueGenerationResult GenerateLeague(
             CompetitiveTierName tierName,
             LeagueRegion region,
-            HumanPlacement? humanPlacement)
+            HumanPlacement? humanPlacement,
+            NameGenerationService? nameGenerationService = null,
+            string? humanCoachName = null,
+            string? humanTeamName = null)
         {
+            NameGenerationService names = nameGenerationService ?? new NameGenerationService((int)tierName * 397 + (int)region);
+            ReserveHumanNames(names, humanCoachName, humanTeamName);
             string leagueId = $"{tierName}-{region}".ToLowerInvariant();
             List<Coach> coaches = [];
             List<Player> players = [];
@@ -75,13 +83,13 @@ namespace AutoSim.Domain.Management.Services
                     {
                         Id = coachId,
                         IsHuman = isHumanTeam,
-                        Name = isHumanTeam ? "Human Coach" : $"{FormatName(teamId)} Coach",
+                        Name = isHumanTeam ? GetHumanName(humanCoachName, "Human Coach") : names.GenerateCoachName(),
                         TeamId = teamId
                     });
                     players.AddRange(PositionRoles.Select((role, index) => new Player
                     {
                         Id = playerIds[index],
-                        Name = $"{FormatName(teamId)} {role}",
+                        Name = names.GeneratePlayerName(),
                         PositionRole = role,
                         TeamId = teamId
                     }));
@@ -91,7 +99,7 @@ namespace AutoSim.Domain.Management.Services
                         DivisionId = divisionId,
                         Id = teamId,
                         LeagueId = leagueId,
-                        Name = isHumanTeam ? "AutoSim United" : FormatName(teamId),
+                        Name = isHumanTeam ? GetHumanName(humanTeamName, "AutoSim United") : names.GenerateTeamName(),
                         PlayerIds = playerIds
                     });
                     divisionTeamIds.Add(teamId);
@@ -129,10 +137,23 @@ namespace AutoSim.Domain.Management.Services
             return new LeagueGenerationResult(league, coaches, players);
         }
 
-        private static string FormatName(string id) =>
-            string.Join(' ', id.Split('-', StringSplitOptions.RemoveEmptyEntries).Select(ToTitleCase));
+        private static string GetHumanName(string? name, string fallback) =>
+            string.IsNullOrWhiteSpace(name) ? fallback : name.Trim();
 
-        private static string ToTitleCase(string value) =>
-            string.IsNullOrWhiteSpace(value) ? value : char.ToUpperInvariant(value[0]) + value[1..];
+        private static void ReserveHumanNames(
+            NameGenerationService nameGenerationService,
+            string? humanCoachName,
+            string? humanTeamName)
+        {
+            if (!string.IsNullOrWhiteSpace(humanCoachName))
+            {
+                nameGenerationService.ReservePersonName(humanCoachName);
+            }
+
+            if (!string.IsNullOrWhiteSpace(humanTeamName))
+            {
+                nameGenerationService.ReserveTeamName(humanTeamName);
+            }
+        }
     }
 }

@@ -51,10 +51,17 @@ namespace AutoSim.Domain.Management.Services
         /// Creates a new world.
         /// </summary>
         /// <param name="seed">The deterministic seed.</param>
+        /// <param name="humanCoachName">The human coach name.</param>
+        /// <param name="humanTeamName">The human team name.</param>
         /// <returns>The generated world state.</returns>
-        public WorldState CreateWorld(int seed)
+        public WorldState CreateWorld(int seed, string? humanCoachName = null, string? humanTeamName = null)
         {
+            string coachName = string.IsNullOrWhiteSpace(humanCoachName) ? "Human Coach" : humanCoachName.Trim();
+            string teamName = string.IsNullOrWhiteSpace(humanTeamName) ? "AutoSim United" : humanTeamName.Trim();
             Random rng = new(seed);
+            NameGenerationService nameGenerationService = new(seed);
+            nameGenerationService.ReservePersonName(coachName);
+            nameGenerationService.ReserveTeamName(teamName);
             HumanPlacement humanPlacement = new(
                 Regions[rng.Next(Regions.Length)],
                 Divisions[rng.Next(Divisions.Length)],
@@ -69,7 +76,13 @@ namespace AutoSim.Domain.Management.Services
                 foreach (LeagueRegion region in Regions)
                 {
                     HumanPlacement? placement = tierName == CompetitiveTierName.Amateur ? humanPlacement : null;
-                    LeagueGenerationResult result = _leagueGenerationService.GenerateLeague(tierName, region, placement);
+                    LeagueGenerationResult result = _leagueGenerationService.GenerateLeague(
+                        tierName,
+                        region,
+                        placement,
+                        nameGenerationService,
+                        coachName,
+                        teamName);
                     leagues.Add(result.League);
                     coaches.AddRange(result.Coaches);
                     players.AddRange(result.Players);

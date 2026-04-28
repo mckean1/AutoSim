@@ -161,10 +161,38 @@ namespace ConsoleApp.Tests.Objects
             Assert.Multiple(() =>
             {
                 Assert.That(startOutput, Does.Contain("New game started."));
+                Assert.That(startOutput, Does.Contain("Coach: Human Coach"));
                 Assert.That(teamOutput, Does.Contain("Coach: Human Coach"));
                 Assert.That(teamOutput, Does.Contain("Players:"));
                 Assert.That(leagueOutput, Does.Contain("Standings:"));
                 Assert.That(matchOutput, Does.Contain("Resolved week 1: 120 matches."));
+            });
+        }
+
+        [Test]
+        public void ExecuteCommand_StartMatchWithDifferentCasing_StartsMatch()
+        {
+            string directory = CreateTempDirectory();
+            ConsoleApplication application = new(directory, () => 123, new CountingMatchEngineWrapper());
+            application.ExecuteCommand("start");
+
+            string output = application.ExecuteCommand("Start Match");
+
+            Assert.That(output, Does.Contain("Resolved week 1: 120 matches."));
+        }
+
+        [Test]
+        public void ExecuteCommand_UnknownCommand_PrintsFriendlyMessage()
+        {
+            string directory = CreateTempDirectory();
+            ConsoleApplication application = new(directory, () => 123);
+
+            string output = application.ExecuteCommand("start macth");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(output, Does.Contain("Unknown command: start macth"));
+                Assert.That(output, Does.Contain("Type help for available commands."));
             });
         }
 

@@ -50,6 +50,47 @@ namespace AutoSim.Domain.Tests.Management.Services
         }
 
         [Test]
+        public void CreateWorld_CustomHumanNames_UsesProvidedCoachAndTeamNames()
+        {
+            WorldState world = new WorldGenerationService().CreateWorld(
+                seed: 123,
+                humanCoachName: "Mina Vale",
+                humanTeamName: "Signal Crown");
+            Coach humanCoach = world.Coaches.Single(coach => coach.IsHuman);
+            Team humanTeam = world.Tiers
+                .SelectMany(tier => tier.Leagues)
+                .SelectMany(league => league.Teams)
+                .Single(team => team.Id == humanCoach.TeamId);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(humanCoach.Name, Is.EqualTo("Mina Vale"));
+                Assert.That(humanTeam.Name, Is.EqualTo("Signal Crown"));
+            });
+        }
+
+        [Test]
+        public void CreateWorld_NewGame_GeneratesUniqueCoachPlayerAndTeamNames()
+        {
+            WorldState world = new WorldGenerationService().CreateWorld(seed: 123);
+            IReadOnlyList<string> personNames = world.Coaches
+                .Select(coach => coach.Name)
+                .Concat(world.Players.Select(player => player.Name))
+                .ToList();
+            IReadOnlyList<string> teamNames = world.Tiers
+                .SelectMany(tier => tier.Leagues)
+                .SelectMany(league => league.Teams)
+                .Select(team => team.Name)
+                .ToList();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(personNames, Is.Unique);
+                Assert.That(teamNames, Is.Unique);
+            });
+        }
+
+        [Test]
         public void CreateWorld_NewGame_ExposesIsHumanOnlyOnCoach()
         {
             Type[] managementTypes =

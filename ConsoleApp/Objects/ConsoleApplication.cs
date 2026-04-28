@@ -102,7 +102,14 @@ namespace ConsoleApp.Objects
                 Environment.Exit(0);
             }
 
-            Console.Write(ExecuteCommand(_command));
+            if (IsStartGameCommand())
+            {
+                Console.Write(StartGame(ReadRequiredValue("Coach Name"), ReadRequiredValue("Team Name")));
+            }
+            else
+            {
+                Console.Write(ExecuteCommand(_command));
+            }
 
             _previousCommand = _command;
             _command = string.Empty;
@@ -164,7 +171,8 @@ namespace ConsoleApp.Objects
                     + "  exit  - Exits AutoSim." + Environment.NewLine;
             }
 
-            return string.Empty;
+            return $"Unknown command: {command}" + Environment.NewLine
+                + "Type help for available commands." + Environment.NewLine;
         }
 
         private void HandleBackspace()
@@ -194,8 +202,10 @@ namespace ConsoleApp.Objects
             Console.Write($"{ConsoleConstants.Prompt}{_command}");
         }
 
-        private bool IsStartGameCommand() => string.Equals(_command, ConsoleConstants.Start, StringComparison.Ordinal);
-        private bool IsStartMatchCommand() => string.Equals(_command, ConsoleConstants.StartMatch, StringComparison.Ordinal);
+        private bool IsStartGameCommand() =>
+            string.Equals(_command.Trim(), ConsoleConstants.Start, StringComparison.OrdinalIgnoreCase);
+        private bool IsStartMatchCommand() =>
+            string.Equals(_command.Trim(), ConsoleConstants.StartMatch, StringComparison.OrdinalIgnoreCase);
         private bool IsShowLeagueCommand() => string.Equals(_command, "show league", StringComparison.OrdinalIgnoreCase);
         private bool IsShowTeamCommand() => string.Equals(_command, "show team", StringComparison.OrdinalIgnoreCase);
         private bool IsAnalyzeRoundCommand() =>
@@ -204,8 +214,10 @@ namespace ConsoleApp.Objects
             string.Equals(_command, "analyze rounds", StringComparison.OrdinalIgnoreCase);
         private bool IsSimulateRoundsCommand() =>
             _command.StartsWith("simulate rounds", StringComparison.OrdinalIgnoreCase);
-        private bool IsHelpCommand() => string.Equals(_command, ConsoleConstants.Help, StringComparison.Ordinal);
-        private bool IsExitCommand() => string.Equals(_command, ConsoleConstants.Exit, StringComparison.Ordinal);
+        private bool IsHelpCommand() =>
+            string.Equals(_command.Trim(), ConsoleConstants.Help, StringComparison.OrdinalIgnoreCase);
+        private bool IsExitCommand() =>
+            string.Equals(_command.Trim(), ConsoleConstants.Exit, StringComparison.OrdinalIgnoreCase);
         private void Redraw() => Console.Clear();
 
         private string StartMatch()
@@ -230,19 +242,36 @@ namespace ConsoleApp.Objects
                 + humanSummary + Environment.NewLine;
         }
 
-        private string StartGame()
+        private string StartGame(string? coachName = null, string? teamName = null)
         {
             int seed = _seedProvider();
-            _world = _worldGenerationService.CreateWorld(seed);
+            _world = _worldGenerationService.CreateWorld(seed, coachName, teamName);
             Team humanTeam = GetHumanTeam(_world);
+            Coach humanCoach = GetHumanCoach(_world);
             League humanLeague = GetTeamLeague(_world, humanTeam);
             Division humanDivision = humanLeague.Divisions.First(division => division.Id == humanTeam.DivisionId);
 
             return "New game started." + Environment.NewLine
                 + $"Seed: {seed}" + Environment.NewLine
+                + $"Coach: {humanCoach.Name}" + Environment.NewLine
                 + $"Team: {humanTeam.Name}" + Environment.NewLine
                 + $"League: {humanLeague.TierName} {humanLeague.Region} League" + Environment.NewLine
                 + $"Division: {humanDivision.Name} Division" + Environment.NewLine;
+        }
+
+        private static string ReadRequiredValue(string label)
+        {
+            while (true)
+            {
+                Console.Write($"{label}: ");
+                string? value = Console.ReadLine();
+                if (!string.IsNullOrWhiteSpace(value))
+                {
+                    return value.Trim();
+                }
+
+                Console.WriteLine($"{label} is required.");
+            }
         }
 
         private string ShowLeague()
