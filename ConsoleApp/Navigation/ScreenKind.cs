@@ -16,9 +16,19 @@ namespace ConsoleApp.Navigation
         Team,
 
         /// <summary>
+        /// The player details screen.
+        /// </summary>
+        PlayerDetail,
+
+        /// <summary>
         /// The league standings screen.
         /// </summary>
         League,
+
+        /// <summary>
+        /// The playoff picture screen.
+        /// </summary>
+        Playoffs,
 
         /// <summary>
         /// The weekly schedule screen.
@@ -83,6 +93,16 @@ namespace ConsoleApp.Navigation
         /// <summary>
         /// The paged replay review screen.
         /// </summary>
-        ReplayReview
+        ReplayReview,
+
+        /// <summary>
+        /// The help and command reference screen.
+        /// </summary>
+        Help,
+
+        /// <summary>
+        /// The new game setup screen.
+        /// </summary>
+        NewGameSetup
     }
 }

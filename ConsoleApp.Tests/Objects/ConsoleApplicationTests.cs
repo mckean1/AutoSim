@@ -28,6 +28,224 @@ namespace ConsoleApp.Tests.Objects
         }
 
         [Test]
+        public void ExecuteCommand_Help_RendersCommandReferenceScreen()
+        {
+            string directory = CreateTempDirectory();
+            ConsoleApplication application = new(directory, () => 123);
+
+            string output = application.ExecuteCommand("help");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(output, Does.Contain("Help"));
+                Assert.That(output, Does.Contain("General"));
+                Assert.That(output, Does.Contain("Management"));
+                Assert.That(output, Does.Contain("Replay"));
+                Assert.That(output, Does.Contain("Commands: home | back | help"));
+            });
+        }
+
+        [Test]
+        public void ExecuteCommand_ShowHelp_RendersHelpScreen()
+        {
+            string directory = CreateTempDirectory();
+            ConsoleApplication application = new(directory, () => 123);
+
+            string output = application.ExecuteCommand("show help");
+
+            Assert.That(output, Does.Contain("Help"));
+        }
+
+        [Test]
+        public void ExecuteCommand_EmptyWorldCommand_ShowsFriendlyMessageInScreenShell()
+        {
+            string directory = CreateTempDirectory();
+            ConsoleApplication application = new(directory, () => 123);
+
+            string output = application.ExecuteCommand("show team");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(output, Does.Contain("No world has been created yet. Use `start` to begin a new game."));
+                Assert.That(output, Does.Contain("║"));
+            });
+        }
+
+        [Test]
+        public void ExecuteCommand_InitialState_RendersNoWorldScreen()
+        {
+            string directory = CreateTempDirectory();
+            ConsoleApplication application = new(directory, () => 123);
+
+            string output = application.ExecuteCommand("home");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(output, Does.Contain("Welcome to AutoSim"));
+                Assert.That(output, Does.Contain("No game world has been created yet."));
+                Assert.That(output, Does.Contain("Commands: start | help"));
+            });
+        }
+
+        [Test]
+        public void ExecuteCommand_Start_EntersNewGameSetupCoachStep()
+        {
+            string directory = CreateTempDirectory();
+            ConsoleApplication application = new(directory, () => 123);
+
+            string output = application.ExecuteCommand("start");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(output, Does.Contain("New Game Setup"));
+                Assert.That(output, Does.Contain("Create Your Coach"));
+                Assert.That(output, Does.Contain("Coach Name: _"));
+                Assert.That(output, Does.Contain("Commands: cancel | help"));
+            });
+        }
+
+        [Test]
+        public void ExecuteCommand_SetupCoachName_Invalid_RerendersWithValidationMessage()
+        {
+            string directory = CreateTempDirectory();
+            ConsoleApplication application = new(directory, () => 123);
+            application.ExecuteCommand("start");
+
+            string output = application.ExecuteCommand(" ");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(output, Does.Contain("Coach name must be between 2 and 40 characters."));
+                Assert.That(output, Does.Contain("Create Your Coach"));
+            });
+        }
+
+        [Test]
+        public void ExecuteCommand_SetupCoachName_Valid_AdvancesToTeamStep()
+        {
+            string directory = CreateTempDirectory();
+            ConsoleApplication application = new(directory, () => 123);
+            application.ExecuteCommand("start");
+
+            string output = application.ExecuteCommand("McKean");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(output, Does.Contain("Create Your Team"));
+                Assert.That(output, Does.Contain("Coach Name: McKean"));
+                Assert.That(output, Does.Contain("Team Name: _"));
+                Assert.That(output, Does.Contain("Commands: back | cancel | help"));
+            });
+        }
+
+        [Test]
+        public void ExecuteCommand_SetupBackFromTeamStep_ReturnsToCoachStep()
+        {
+            string directory = CreateTempDirectory();
+            ConsoleApplication application = new(directory, () => 123);
+            application.ExecuteCommand("start");
+            application.ExecuteCommand("McKean");
+
+            string output = application.ExecuteCommand("back");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(output, Does.Contain("Create Your Coach"));
+                Assert.That(output, Does.Contain("Coach Name: McKean"));
+            });
+        }
+
+        [Test]
+        public void ExecuteCommand_SetupCancel_ClearsStateAndReturnsToNoWorldScreen()
+        {
+            string directory = CreateTempDirectory();
+            ConsoleApplication application = new(directory, () => 123);
+            application.ExecuteCommand("start");
+            application.ExecuteCommand("McKean");
+
+            string output = application.ExecuteCommand("cancel");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(output, Does.Contain("New game setup cancelled."));
+                Assert.That(output, Does.Contain("No game world has been created yet."));
+            });
+        }
+
+        [Test]
+        public void ExecuteCommand_SetupTeamName_Invalid_DoesNotGenerateWorld()
+        {
+            string directory = CreateTempDirectory();
+            ConsoleApplication application = new(directory, () => 123);
+            application.ExecuteCommand("start");
+            application.ExecuteCommand("McKean");
+
+            string output = application.ExecuteCommand(" ");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(output, Does.Contain("Team name must be between 2 and 50 characters."));
+                Assert.That(output, Does.Contain("Create Your Team"));
+                Assert.That(output, Does.Contain("Team Name: _"));
+            });
+        }
+
+        [Test]
+        public void ExecuteCommand_SetupComplete_GeneratesWorldUsingEnteredNames()
+        {
+            string directory = CreateTempDirectory();
+            ConsoleApplication application = new(directory, () => 123);
+            application.ExecuteCommand("start");
+            application.ExecuteCommand("McKean");
+
+            string output = application.ExecuteCommand("Salt Lake Strikers");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(output, Does.Contain("Home"));
+                Assert.That(output, Does.Contain("New game created. Coach: McKean | Team: Salt Lake Strikers"));
+                Assert.That(output, Does.Contain("Coach: McKean"));
+                Assert.That(output, Does.Contain("Team: Salt Lake Strikers"));
+            });
+        }
+
+        [Test]
+        public void ExecuteCommand_StartWhenWorldExists_DoesNotOverwriteWorld()
+        {
+            string directory = CreateTempDirectory();
+            ConsoleApplication application = CreateStartedApplication(directory);
+            string originalTeamOutput = application.ExecuteCommand("show team");
+
+            string output = application.ExecuteCommand("start");
+            string afterOutput = application.ExecuteCommand("show team");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(output, Does.Contain("A game world already exists."));
+                Assert.That(afterOutput, Is.EqualTo(originalTeamOutput));
+            });
+        }
+
+        [Test]
+        public void ExecuteCommand_HelpDuringSetup_ReturnsToSetupOnBack()
+        {
+            string directory = CreateTempDirectory();
+            ConsoleApplication application = new(directory, () => 123);
+            application.ExecuteCommand("start");
+            application.ExecuteCommand("McKean");
+            string helpOutput = application.ExecuteCommand("help");
+
+            string output = application.ExecuteCommand("back");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(helpOutput, Does.Contain("Begin new game setup."));
+                Assert.That(helpOutput, Does.Contain("type a name"));
+                Assert.That(output, Does.Contain("Create Your Team"));
+            });
+        }
+
+        [Test]
         public void CreateTemporaryRoundRoster_DefaultCatalog_ReturnsRoleBalancedTeams()
         {
             RoundRoster roster = ConsoleApplication.CreateTemporaryRoundRoster(ChampionCatalog.GetDefaultChampions(), seed: 123);
@@ -154,6 +372,8 @@ namespace ConsoleApp.Tests.Objects
             ConsoleApplication application = new(directory, () => 123);
 
             string startOutput = application.ExecuteCommand("start");
+            string coachOutput = application.ExecuteCommand("Coach Carter");
+            string setupCompleteOutput = application.ExecuteCommand("Salt Lake Strikers");
             string teamOutput = application.ExecuteCommand("show team");
             string leagueOutput = application.ExecuteCommand("show league");
             string scheduleOutput = application.ExecuteCommand("show schedule");
@@ -161,11 +381,11 @@ namespace ConsoleApp.Tests.Objects
 
             Assert.Multiple(() =>
             {
-                Assert.That(startOutput, Does.Contain("New game started."));
-                Assert.That(startOutput, Does.Contain("Coach:"));
-                Assert.That(startOutput, Does.Not.Contain("Coach: Human Coach"));
-                Assert.That(startOutput, Does.Contain("Team:"));
-                Assert.That(startOutput, Does.Not.Contain("Team: AutoSim United"));
+                Assert.That(startOutput, Does.Contain("Create Your Coach"));
+                Assert.That(coachOutput, Does.Contain("Create Your Team"));
+                Assert.That(setupCompleteOutput, Does.Contain("New game created."));
+                Assert.That(setupCompleteOutput, Does.Contain("Coach: Coach Carter"));
+                Assert.That(setupCompleteOutput, Does.Contain("Team: Salt Lake Strikers"));
                 Assert.That(teamOutput, Does.Contain("Coach:"));
                 Assert.That(teamOutput, Does.Contain("Roster"));
                 Assert.That(leagueOutput, Does.Contain("Standings"));
@@ -180,7 +400,7 @@ namespace ConsoleApp.Tests.Objects
         {
             string directory = CreateTempDirectory();
             ConsoleApplication application = new(directory, () => 123, new CountingMatchEngineWrapper());
-            application.ExecuteCommand("start");
+            CompleteNewGameSetup(application);
 
             string output = application.ExecuteCommand("Start Match");
 
@@ -208,7 +428,7 @@ namespace ConsoleApp.Tests.Objects
             string directory = CreateTempDirectory();
             CountingMatchEngineWrapper matchEngineWrapper = new();
             ConsoleApplication application = new(directory, () => 123, matchEngineWrapper);
-            application.ExecuteCommand("start");
+            CompleteNewGameSetup(application);
             application.ExecuteCommand("start match");
             string draftOutput = application.ExecuteCommand("continue");
             string draftSummaryOutput = application.ExecuteCommand("auto draft");
@@ -230,7 +450,7 @@ namespace ConsoleApp.Tests.Objects
         {
             string directory = CreateTempDirectory();
             ConsoleApplication application = new(directory, () => 123, new CountingMatchEngineWrapper());
-            application.ExecuteCommand("start");
+            CompleteNewGameSetup(application);
 
             application.ExecuteCommand("start match");
             application.ExecuteCommand("continue");
@@ -256,7 +476,7 @@ namespace ConsoleApp.Tests.Objects
         {
             string directory = CreateTempDirectory();
             ConsoleApplication application = new(directory, () => 123, new CountingMatchEngineWrapper());
-            application.ExecuteCommand("start");
+            CompleteNewGameSetup(application);
             application.ExecuteCommand("start match");
             application.ExecuteCommand("continue");
             application.ExecuteCommand("auto draft");
@@ -278,7 +498,7 @@ namespace ConsoleApp.Tests.Objects
         {
             string directory = CreateTempDirectory();
             ConsoleApplication application = new(directory, () => 123, new CountingMatchEngineWrapper());
-            application.ExecuteCommand("start");
+            CompleteNewGameSetup(application);
             application.ExecuteCommand("start match");
             application.ExecuteCommand("continue");
             application.ExecuteCommand("auto draft");
@@ -301,7 +521,7 @@ namespace ConsoleApp.Tests.Objects
         {
             string directory = CreateTempDirectory();
             ConsoleApplication application = new(directory, () => 123);
-            application.ExecuteCommand("start");
+            CompleteNewGameSetup(application);
 
             string output = application.ExecuteCommand("view last match");
 
@@ -418,7 +638,7 @@ namespace ConsoleApp.Tests.Objects
         {
             string directory = CreateTempDirectory();
             ConsoleApplication application = new(directory, () => 123);
-            application.ExecuteCommand("start");
+            CompleteNewGameSetup(application);
             application.ExecuteCommand("show team");
 
             string output = application.ExecuteCommand("home");
@@ -436,7 +656,7 @@ namespace ConsoleApp.Tests.Objects
         {
             string directory = CreateTempDirectory();
             ConsoleApplication application = new(directory, () => 123);
-            application.ExecuteCommand("start");
+            CompleteNewGameSetup(application);
 
             string output = application.ExecuteCommand("show champions");
 
@@ -504,6 +724,200 @@ namespace ConsoleApp.Tests.Objects
             string output = application.ExecuteCommand("show champion nope");
 
             Assert.That(output, Does.Contain("No champion found matching: nope"));
+        }
+
+        [Test]
+        public void ExecuteCommand_ShowPlayerExactMatch_RendersPlayerDetail()
+        {
+            string directory = CreateTempDirectory();
+            ConsoleApplication application = new(directory, () => 123);
+            CompleteNewGameSetup(application);
+            string teamOutput = application.ExecuteCommand("show team");
+            string playerName = ExtractRosterPlayerName(teamOutput);
+
+            string output = application.ExecuteCommand($"show player {playerName}");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(output, Does.Contain("Player Detail"));
+                Assert.That(output, Does.Contain(playerName));
+                Assert.That(output, Does.Contain("Contracts are not implemented yet."));
+                Assert.That(output, Does.Contain("Recent player performance is not available yet."));
+            });
+        }
+
+        [Test]
+        public void ExecuteCommand_ShowPlayerCaseInsensitive_RendersPlayerDetail()
+        {
+            string directory = CreateTempDirectory();
+            ConsoleApplication application = new(directory, () => 123);
+            CompleteNewGameSetup(application);
+            string playerName = ExtractRosterPlayerName(application.ExecuteCommand("show team"));
+
+            string output = application.ExecuteCommand($"show player {playerName.ToUpperInvariant()}");
+
+            Assert.That(output, Does.Contain("Player Detail"));
+        }
+
+        [Test]
+        public void ExecuteCommand_ShowPlayerPartialMatch_RendersPlayerDetailWhenUnambiguous()
+        {
+            string directory = CreateTempDirectory();
+            ConsoleApplication application = new(directory, () => 123);
+            CompleteNewGameSetup(application);
+            string playerName = ExtractRosterPlayerName(application.ExecuteCommand("show team"));
+            string partial = playerName.Split(' ')[0];
+
+            string output = application.ExecuteCommand($"show player {partial}");
+
+            Assert.That(output, Does.Contain("Player Detail"));
+        }
+
+        [Test]
+        public void ExecuteCommand_ShowPlayerInvalidMatch_ShowsHelpfulMessage()
+        {
+            string directory = CreateTempDirectory();
+            ConsoleApplication application = new(directory, () => 123);
+            CompleteNewGameSetup(application);
+
+            string output = application.ExecuteCommand("show player nope");
+
+            Assert.That(output, Does.Contain("No player found matching: nope"));
+        }
+
+        [Test]
+        public void ExecuteCommand_ShowPlayerAmbiguousMatch_ShowsHelpfulMessage()
+        {
+            string directory = CreateTempDirectory();
+            ConsoleApplication application = new(directory, () => 123);
+            CompleteNewGameSetup(application);
+
+            string output = application.ExecuteCommand("show player a");
+
+            Assert.That(output, Does.Contain("Multiple players match:").Or.Contain("Player Detail"));
+        }
+
+        [Test]
+        public void ExecuteCommand_ShowSpecificTeamExactMatch_RendersTeamDetail()
+        {
+            string directory = CreateTempDirectory();
+            ConsoleApplication application = new(directory, () => 123);
+            string startOutput = CompleteNewGameSetup(application);
+            string teamName = ExtractFieldValue(startOutput, "Team:");
+
+            string output = application.ExecuteCommand($"show team {teamName}");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(output, Does.Contain("Team Detail"));
+                Assert.That(output, Does.Contain(teamName));
+                Assert.That(output, Does.Contain("Roster"));
+            });
+        }
+
+        [Test]
+        public void ExecuteCommand_ShowSpecificTeamCaseInsensitive_RendersTeamDetail()
+        {
+            string directory = CreateTempDirectory();
+            ConsoleApplication application = new(directory, () => 123);
+            string teamName = ExtractFieldValue(CompleteNewGameSetup(application), "Team:");
+
+            string output = application.ExecuteCommand($"show team {teamName.ToUpperInvariant()}");
+
+            Assert.That(output, Does.Contain("Team Detail"));
+        }
+
+        [Test]
+        public void ExecuteCommand_ShowSpecificTeamPartialMatch_RendersTeamDetailWhenUnambiguous()
+        {
+            string directory = CreateTempDirectory();
+            ConsoleApplication application = new(directory, () => 123);
+            string teamName = ExtractFieldValue(CompleteNewGameSetup(application), "Team:");
+            string partial = teamName.Split(' ')[0];
+
+            string output = application.ExecuteCommand($"show team {partial}");
+
+            Assert.That(output, Does.Contain("Team Detail").Or.Contain("Multiple teams match:"));
+        }
+
+        [Test]
+        public void ExecuteCommand_ShowSpecificTeamInvalidMatch_ShowsHelpfulMessage()
+        {
+            string directory = CreateTempDirectory();
+            ConsoleApplication application = new(directory, () => 123);
+            CompleteNewGameSetup(application);
+
+            string output = application.ExecuteCommand("show team nope");
+
+            Assert.That(output, Does.Contain("No team found matching: nope"));
+        }
+
+        [Test]
+        public void ExecuteCommand_ShowSpecificTeamAmbiguousMatch_ShowsHelpfulMessage()
+        {
+            string directory = CreateTempDirectory();
+            ConsoleApplication application = new(directory, () => 123);
+            CompleteNewGameSetup(application);
+
+            string output = application.ExecuteCommand("show team a");
+
+            Assert.That(output, Does.Contain("Multiple teams match:").Or.Contain("Team Detail"));
+        }
+
+        [Test]
+        public void ExecuteCommand_ShowOpponentFromHome_RendersOpponentWhenAvailable()
+        {
+            string directory = CreateTempDirectory();
+            ConsoleApplication application = new(directory, () => 123);
+            CompleteNewGameSetup(application);
+
+            string output = application.ExecuteCommand("show opponent");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(output, Does.Contain("Team Detail"));
+                Assert.That(output, Does.Contain("Opponent:"));
+            });
+        }
+
+        [Test]
+        public void ExecuteCommand_ShowOpponentWithoutWorld_ShowsHelpfulMessage()
+        {
+            string directory = CreateTempDirectory();
+            ConsoleApplication application = new(directory, () => 123);
+
+            string output = application.ExecuteCommand("show opponent");
+
+            Assert.That(output, Does.Contain("No world has been created yet. Use `start` to begin a new game."));
+        }
+
+        [Test]
+        public void ExecuteCommand_ShowPlayoffs_RendersPlaceholderScreen()
+        {
+            string directory = CreateTempDirectory();
+            ConsoleApplication application = new(directory, () => 123);
+            CompleteNewGameSetup(application);
+
+            string output = application.ExecuteCommand("show playoffs");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(output, Does.Contain("Playoff Picture"));
+                Assert.That(output, Does.Contain("Regular season lasts 23 weeks."));
+                Assert.That(output, Does.Contain("Week 24: League Quarterfinals, best-of-5"));
+            });
+        }
+
+        [Test]
+        public void ExecuteCommand_ShowPlayoffPicture_RendersPlaceholderScreen()
+        {
+            string directory = CreateTempDirectory();
+            ConsoleApplication application = new(directory, () => 123);
+            CompleteNewGameSetup(application);
+
+            string output = application.ExecuteCommand("show playoff picture");
+
+            Assert.That(output, Does.Contain("Playoff Picture"));
         }
 
         [Test]
@@ -575,7 +989,7 @@ namespace ConsoleApp.Tests.Objects
         {
             string directory = CreateTempDirectory();
             ConsoleApplication application = new(directory, () => 123, new CountingMatchEngineWrapper());
-            application.ExecuteCommand("start");
+            CompleteNewGameSetup(application);
             application.ExecuteCommand("start match");
             application.ExecuteCommand("continue");
             application.ExecuteCommand("show champion quickshot");
@@ -583,6 +997,31 @@ namespace ConsoleApp.Tests.Objects
             string output = application.ExecuteCommand("back");
 
             Assert.That(output, Does.Contain("Draft"));
+        }
+
+        [Test]
+        public void ExecuteCommand_BackWithoutPreviousScreen_ShowsHelpfulMessage()
+        {
+            string directory = CreateTempDirectory();
+            ConsoleApplication application = new(directory, () => 123);
+
+            string output = application.ExecuteCommand("back");
+
+            Assert.That(output, Does.Contain("No previous screen is available."));
+        }
+
+        [Test]
+        public void ExecuteCommand_BackAfterHelp_ReturnsPreviousScreen()
+        {
+            string directory = CreateTempDirectory();
+            ConsoleApplication application = new(directory, () => 123);
+            CompleteNewGameSetup(application);
+            application.ExecuteCommand("show team");
+            application.ExecuteCommand("help");
+
+            string output = application.ExecuteCommand("back");
+
+            Assert.That(output, Does.Contain("Team Detail"));
         }
 
         [Test]
@@ -704,17 +1143,60 @@ namespace ConsoleApp.Tests.Objects
             return directory;
         }
 
+        private static string ExtractFieldValue(string output, string fieldName)
+        {
+            string normalized = output.Replace('║', '\n');
+            string? line = normalized
+                .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
+                .Select(value => value.Trim())
+                .FirstOrDefault(value => value.StartsWith(fieldName, StringComparison.Ordinal));
+
+            Assert.That(line, Is.Not.Null, $"Expected to find field '{fieldName}' in output.");
+            return line![fieldName.Length..].Trim();
+        }
+
+        private static string ExtractRosterPlayerName(string teamOutput)
+        {
+            string normalized = teamOutput.Replace('║', '\n');
+            string? rosterLine = normalized
+                .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
+                .Select(value => value.Trim())
+                .FirstOrDefault(value => value.StartsWith("Top ", StringComparison.Ordinal)
+                    || value.StartsWith("Jungle ", StringComparison.Ordinal)
+                    || value.StartsWith("Mid ", StringComparison.Ordinal)
+                    || value.StartsWith("Bot ", StringComparison.Ordinal)
+                    || value.StartsWith("Support ", StringComparison.Ordinal));
+
+            Assert.That(rosterLine, Is.Not.Null, "Expected a roster line in team output.");
+            string[] parts = rosterLine!.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            return string.Join(' ', parts.Skip(1));
+        }
+
         private static ConsoleApplication CreateApplicationWithCompletedMatch()
         {
             string directory = CreateTempDirectory();
             ConsoleApplication application = new(directory, () => 123, new CountingMatchEngineWrapper());
-            application.ExecuteCommand("start");
+            CompleteNewGameSetup(application);
             application.ExecuteCommand("start match");
             application.ExecuteCommand("continue");
             application.ExecuteCommand("auto draft");
             application.ExecuteCommand("continue");
             application.ExecuteCommand("skip");
             application.ExecuteCommand("match summary");
+            return application;
+        }
+
+        private static string CompleteNewGameSetup(ConsoleApplication application, string coachName = "Coach Carter", string teamName = "Salt Lake Strikers")
+        {
+            application.ExecuteCommand("start");
+            application.ExecuteCommand(coachName);
+            return application.ExecuteCommand(teamName);
+        }
+
+        private static ConsoleApplication CreateStartedApplication(string directory, string coachName = "Coach Carter", string teamName = "Salt Lake Strikers")
+        {
+            ConsoleApplication application = new(directory, () => 123);
+            CompleteNewGameSetup(application, coachName, teamName);
             return application;
         }
 

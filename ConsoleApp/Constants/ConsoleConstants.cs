@@ -30,8 +30,12 @@ namespace ConsoleApp.Constants
         internal const string ShowLeague = "show league";
         internal const string ShowChampions = "show champions";
         internal const string ShowOpponent = "show opponent";
+        internal const string ShowPlayer = "show player";
+        internal const string ShowPlayoffPicture = "show playoff picture";
+        internal const string ShowPlayoffs = "show playoffs";
         internal const string ShowSchedule = "show schedule";
         internal const string ShowTeam = "show team";
+        internal const string ShowHelp = "show help";
         internal const string Skip = "skip";
         internal const string Slower = "slower";
         internal const string Step = "step";
