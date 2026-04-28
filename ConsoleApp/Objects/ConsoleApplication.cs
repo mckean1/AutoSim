@@ -16,11 +16,6 @@ namespace ConsoleApp.Objects
     /// </summary>
     public sealed class ConsoleApplication
     {
-        private const int TeamRosterSize = 5;
-        private const int RequiredFighterCount = 4;
-        private const int RequiredMageCount = 2;
-        private const int RequiredMarksmanCount = 2;
-        private const int RequiredSupportCount = 2;
         private static readonly TimeSpan LiveReplayRenderInterval = TimeSpan.FromMilliseconds(66);
         private static readonly TimeSpan ReplayPollDelay = TimeSpan.FromMilliseconds(25);
         private DateTime _replayPlaybackStartedAtUtc;
@@ -163,7 +158,7 @@ namespace ConsoleApp.Objects
                     _command = _previousCommand;
                 }
 
-                if (IsExitCommand())
+                if (ConsoleCommandParser.Parse(_command).Kind == ConsoleCommandKind.Exit)
                 {
                     _currentScreenModel = BuildCurrentScreen("Exiting the application.");
                     _screenRenderer.Render(_currentScreenModel);
@@ -190,7 +185,8 @@ namespace ConsoleApp.Objects
         /// <returns>The command output.</returns>
         public string ExecuteCommand(string command)
         {
-            _command = command ?? string.Empty;
+            ConsoleCommand parsedCommand = ConsoleCommandParser.Parse(command);
+            _command = parsedCommand.Text;
             TryRefreshWeekSimulationSession();
 
             if (_inputMode == AppInputMode.NewGameSetup)
@@ -198,228 +194,75 @@ namespace ConsoleApp.Objects
                 return HandleNewGameSetupInput(_command);
             }
 
-            string normalizedCommand = _command.Trim();
-
-            if (IsStartGameCommand())
+            return parsedCommand.Kind switch
             {
-                return BeginNewGameSetup();
+                ConsoleCommandKind.StartGame => BeginNewGameSetup(),
+                ConsoleCommandKind.Home => RenderHome(),
+                ConsoleCommandKind.StartMatch => RenderMatchPreview(),
+                ConsoleCommandKind.Status => RenderStatus(),
+                ConsoleCommandKind.ViewLastMatch => ViewLastMatch(),
+                ConsoleCommandKind.ViewRound => ViewRound(),
+                ConsoleCommandKind.NextPage => NextReplayReviewPage(),
+                ConsoleCommandKind.PreviousPage => PreviousReplayReviewPage(),
+                ConsoleCommandKind.PreviousRound => PreviousReviewRound(),
+                ConsoleCommandKind.Back => Back(),
+                ConsoleCommandKind.ClearFilter => ClearChampionFilter(),
+                ConsoleCommandKind.FilterRole => FilterChampionRole(),
+                ConsoleCommandKind.ShowChampion => ShowChampion(),
+                ConsoleCommandKind.Continue => ContinueMatchFlow(),
+                ConsoleCommandKind.AutoDraft => AutoDraft(),
+                ConsoleCommandKind.Step => StepReplay(),
+                ConsoleCommandKind.Skip => SkipReplay(),
+                ConsoleCommandKind.Play => PlayReplay(),
+                ConsoleCommandKind.Pause => PauseReplay(),
+                ConsoleCommandKind.Faster => IncreaseReplaySpeed(),
+                ConsoleCommandKind.Slower => DecreaseReplaySpeed(),
+                ConsoleCommandKind.Details => ShowReplayDetails(),
+                ConsoleCommandKind.DraftPlaceholder => RenderCurrentScreen($"{parsedCommand.Text} is not implemented yet. Use auto draft for this MVP."),
+                ConsoleCommandKind.QuitReplay => QuitReplay(),
+                ConsoleCommandKind.NextRound => NextRound(),
+                ConsoleCommandKind.ViewReplay => ViewReplay(),
+                ConsoleCommandKind.MatchSummary => MatchSummaryCommand(),
+                ConsoleCommandKind.ViewRounds => ViewRounds(),
+                ConsoleCommandKind.Cancel => CancelMatchPreview(),
+                ConsoleCommandKind.ShowSpecificTeam => ShowSpecificTeam(),
+                ConsoleCommandKind.ShowTeam => ShowTeam(),
+                ConsoleCommandKind.ShowLeague => ShowLeague(),
+                ConsoleCommandKind.ShowSchedule => ShowSchedule(),
+                ConsoleCommandKind.ShowOpponent => ShowOpponent(),
+                ConsoleCommandKind.ShowPlayer => ShowPlayer(),
+                ConsoleCommandKind.ShowPlayoffs => ShowPlayoffs(),
+                ConsoleCommandKind.ShowChampions => ShowChampions(),
+                ConsoleCommandKind.SimulateRounds => SimulateRounds(),
+                ConsoleCommandKind.AnalyzeRounds => AnalyzeRounds(),
+                ConsoleCommandKind.AnalyzeRound => AnalyzeRound(),
+                ConsoleCommandKind.Help => RenderHelp(),
+                _ => RenderCurrentScreen($"Unknown command: {parsedCommand.Text}")
+            };
+        }
+
+        private string QuitReplay()
+        {
+            if (_weekSimulationSession?.Status == WeekSimulationStatus.Running)
+            {
+                return RenderReplayPreparation("Replay is still preparing. You can leave it running or wait here.");
             }
 
-            if (IsHomeCommand())
+            return RenderMatchSummary("Replay closed.");
+        }
+
+        private string CancelMatchPreview()
+        {
+            if (_screenNavigationState.CurrentScreen is ScreenKind.LiveReplay
+                or ScreenKind.RoundSummary
+                or ScreenKind.MatchSummary)
             {
-                return RenderHome();
+                return RenderCurrentScreen("The match has already started. Use continue or match summary.");
             }
 
-            if (IsStartMatchCommand())
-            {
-                return RenderMatchPreview();
-            }
-
-            if (IsStatusCommand())
-            {
-                return RenderStatus();
-            }
-
-            if (IsViewLastMatchCommand())
-            {
-                return ViewLastMatch();
-            }
-
-            if (IsViewRoundCommand())
-            {
-                return ViewRound();
-            }
-
-            if (IsNextPageCommand())
-            {
-                return NextReplayReviewPage();
-            }
-
-            if (IsPreviousPageCommand())
-            {
-                return PreviousReplayReviewPage();
-            }
-
-            if (IsPreviousRoundCommand())
-            {
-                return PreviousReviewRound();
-            }
-
-            if (IsBackCommand())
-            {
-                return Back();
-            }
-
-            if (IsClearFilterCommand())
-            {
-                return ClearChampionFilter();
-            }
-
-            if (IsFilterRoleCommand())
-            {
-                return FilterChampionRole();
-            }
-
-            if (IsShowChampionCommand())
-            {
-                return ShowChampion();
-            }
-
-            if (IsContinueCommand())
-            {
-                return ContinueMatchFlow();
-            }
-
-            if (IsAutoDraftCommand())
-            {
-                return AutoDraft();
-            }
-
-            if (IsStepCommand())
-            {
-                return StepReplay();
-            }
-
-            if (IsSkipCommand())
-            {
-                return SkipReplay();
-            }
-
-            if (IsPlayCommand())
-            {
-                return PlayReplay();
-            }
-
-            if (IsPauseCommand())
-            {
-                return PauseReplay();
-            }
-
-            if (IsFasterCommand())
-            {
-                return IncreaseReplaySpeed();
-            }
-
-            if (IsSlowerCommand())
-            {
-                return DecreaseReplaySpeed();
-            }
-
-            if (IsDetailsCommand())
-            {
-                return ShowReplayDetails();
-            }
-
-            if (IsDraftPlaceholderCommand())
-            {
-                return RenderCurrentScreen($"{normalizedCommand} is not implemented yet. Use auto draft for this MVP.");
-            }
-
-            if (IsQuitReplayCommand())
-            {
-                if (_weekSimulationSession?.Status == WeekSimulationStatus.Running)
-                {
-                    return RenderReplayPreparation("Replay is still preparing. You can leave it running or wait here.");
-                }
-
-                return RenderMatchSummary("Replay closed.");
-            }
-
-            if (IsNextRoundCommand())
-            {
-                return NextRound();
-            }
-
-            if (IsViewReplayCommand())
-            {
-                return ViewReplay();
-            }
-
-            if (IsMatchSummaryCommand())
-            {
-                return MatchSummaryCommand();
-            }
-
-            if (IsViewRoundsCommand())
-            {
-                return ViewRounds();
-            }
-
-            if (IsCancelCommand())
-            {
-                if (_screenNavigationState.CurrentScreen is ScreenKind.LiveReplay
-                    or ScreenKind.RoundSummary
-                    or ScreenKind.MatchSummary)
-                {
-                    return RenderCurrentScreen("The match has already started. Use continue or match summary.");
-                }
-
-                _pendingMatch = null;
-                _matchPresentationState.Clear();
-                return RenderHome("Match preview cancelled.");
-            }
-
-            if (IsShowSpecificTeamCommand())
-            {
-                return ShowSpecificTeam();
-            }
-
-            if (IsShowTeamCommand())
-            {
-                return ShowTeam();
-            }
-
-            if (IsShowLeagueCommand())
-            {
-                return ShowLeague();
-            }
-
-            if (IsShowScheduleCommand())
-            {
-                return ShowSchedule();
-            }
-
-            if (IsShowOpponentCommand())
-            {
-                return ShowOpponent();
-            }
-
-            if (IsShowPlayerCommand())
-            {
-                return ShowPlayer();
-            }
-
-            if (IsShowPlayoffsCommand())
-            {
-                return ShowPlayoffs();
-            }
-
-            if (IsShowChampionsCommand())
-            {
-                return ShowChampions();
-            }
-
-            if (IsSimulateRoundsCommand())
-            {
-                return SimulateRounds();
-            }
-
-            if (IsAnalyzeRoundsCommand())
-            {
-                return AnalyzeRounds();
-            }
-
-            if (IsAnalyzeRoundCommand())
-            {
-                return AnalyzeRound();
-            }
-
-            if (IsHelpCommand())
-            {
-                return RenderHelp();
-            }
-
-            return RenderCurrentScreen($"Unknown command: {normalizedCommand}");
+            _pendingMatch = null;
+            _matchPresentationState.Clear();
+            return RenderHome("Match preview cancelled.");
         }
 
         private void HandleBackspace()
@@ -457,93 +300,6 @@ namespace ConsoleApp.Objects
             _screenRenderer.Render(_currentScreenModel, _command);
         }
 
-        private bool IsStartGameCommand() =>
-            string.Equals(_command.Trim(), ConsoleConstants.Start, StringComparison.OrdinalIgnoreCase);
-        private bool IsStartMatchCommand() =>
-            string.Equals(_command.Trim(), ConsoleConstants.StartMatch, StringComparison.OrdinalIgnoreCase);
-        private bool IsStatusCommand() =>
-            string.Equals(_command.Trim(), ConsoleConstants.Status, StringComparison.OrdinalIgnoreCase);
-        private bool IsAutoDraftCommand() =>
-            string.Equals(_command.Trim(), ConsoleConstants.AutoDraft, StringComparison.OrdinalIgnoreCase);
-        private bool IsBackCommand() =>
-            string.Equals(_command.Trim(), ConsoleConstants.Back, StringComparison.OrdinalIgnoreCase);
-        private bool IsCancelCommand() =>
-            string.Equals(_command.Trim(), ConsoleConstants.Cancel, StringComparison.OrdinalIgnoreCase);
-        private bool IsClearFilterCommand() =>
-            string.Equals(_command.Trim(), ConsoleConstants.ClearFilter, StringComparison.OrdinalIgnoreCase);
-        private bool IsContinueCommand() =>
-            string.Equals(_command.Trim(), ConsoleConstants.Continue, StringComparison.OrdinalIgnoreCase);
-        private bool IsDetailsCommand() =>
-            string.Equals(_command.Trim(), ConsoleConstants.Details, StringComparison.OrdinalIgnoreCase);
-        private bool IsFilterRoleCommand() =>
-            _command.Trim().StartsWith($"{ConsoleConstants.FilterRole} ", StringComparison.OrdinalIgnoreCase);
-        private bool IsFasterCommand() =>
-            string.Equals(_command.Trim(), ConsoleConstants.Faster, StringComparison.OrdinalIgnoreCase);
-        private bool IsHomeCommand() =>
-            string.Equals(_command.Trim(), ConsoleConstants.Home, StringComparison.OrdinalIgnoreCase);
-        private bool IsMatchSummaryCommand() =>
-            string.Equals(_command.Trim(), ConsoleConstants.MatchSummary, StringComparison.OrdinalIgnoreCase);
-        private bool IsNextRoundCommand() =>
-            string.Equals(_command.Trim(), ConsoleConstants.NextRound, StringComparison.OrdinalIgnoreCase);
-        private bool IsNextPageCommand() =>
-            string.Equals(_command.Trim(), ConsoleConstants.NextPage, StringComparison.OrdinalIgnoreCase);
-        private bool IsPauseCommand() =>
-            string.Equals(_command.Trim(), ConsoleConstants.Pause, StringComparison.OrdinalIgnoreCase);
-        private bool IsPlayCommand() =>
-            string.Equals(_command.Trim(), ConsoleConstants.Play, StringComparison.OrdinalIgnoreCase);
-        private bool IsPreviousPageCommand() =>
-            string.Equals(_command.Trim(), ConsoleConstants.PreviousPage, StringComparison.OrdinalIgnoreCase);
-        private bool IsPreviousRoundCommand() =>
-            string.Equals(_command.Trim(), ConsoleConstants.PreviousRound, StringComparison.OrdinalIgnoreCase);
-        private bool IsQuitReplayCommand() =>
-            string.Equals(_command.Trim(), ConsoleConstants.QuitReplay, StringComparison.OrdinalIgnoreCase);
-        private bool IsShowChampionsCommand() =>
-            string.Equals(_command.Trim(), ConsoleConstants.ShowChampions, StringComparison.OrdinalIgnoreCase);
-        private bool IsShowChampionCommand() =>
-            _command.Trim().StartsWith("show champion ", StringComparison.OrdinalIgnoreCase);
-        private bool IsShowLeagueCommand() =>
-            string.Equals(_command.Trim(), ConsoleConstants.ShowLeague, StringComparison.OrdinalIgnoreCase);
-        private bool IsShowOpponentCommand() =>
-            string.Equals(_command.Trim(), ConsoleConstants.ShowOpponent, StringComparison.OrdinalIgnoreCase);
-        private bool IsShowScheduleCommand() =>
-            string.Equals(_command.Trim(), ConsoleConstants.ShowSchedule, StringComparison.OrdinalIgnoreCase);
-        private bool IsShowTeamCommand() =>
-            string.Equals(_command.Trim(), ConsoleConstants.ShowTeam, StringComparison.OrdinalIgnoreCase);
-        private bool IsSkipCommand() =>
-            string.Equals(_command.Trim(), ConsoleConstants.Skip, StringComparison.OrdinalIgnoreCase);
-        private bool IsSlowerCommand() =>
-            string.Equals(_command.Trim(), ConsoleConstants.Slower, StringComparison.OrdinalIgnoreCase);
-        private bool IsStepCommand() =>
-            string.Equals(_command.Trim(), ConsoleConstants.Step, StringComparison.OrdinalIgnoreCase);
-        private bool IsViewReplayCommand() =>
-            string.Equals(_command.Trim(), ConsoleConstants.ViewReplay, StringComparison.OrdinalIgnoreCase);
-        private bool IsViewLastMatchCommand() =>
-            string.Equals(_command.Trim(), ConsoleConstants.ViewLastMatch, StringComparison.OrdinalIgnoreCase);
-        private bool IsViewRoundCommand() =>
-            _command.Trim().StartsWith("view round ", StringComparison.OrdinalIgnoreCase);
-        private bool IsViewRoundsCommand() =>
-            string.Equals(_command.Trim(), ConsoleConstants.ViewRounds, StringComparison.OrdinalIgnoreCase);
-        private bool IsAnalyzeRoundCommand() =>
-            _command.StartsWith("analyze round ", StringComparison.OrdinalIgnoreCase);
-        private bool IsAnalyzeRoundsCommand() =>
-            string.Equals(_command, "analyze rounds", StringComparison.OrdinalIgnoreCase);
-        private bool IsSimulateRoundsCommand() =>
-            _command.StartsWith("simulate rounds", StringComparison.OrdinalIgnoreCase);
-        private bool IsHelpCommand() =>
-            string.Equals(_command.Trim(), ConsoleConstants.Help, StringComparison.OrdinalIgnoreCase)
-            || string.Equals(_command.Trim(), ConsoleConstants.ShowHelp, StringComparison.OrdinalIgnoreCase);
-        private bool IsExitCommand() =>
-            string.Equals(_command.Trim(), ConsoleConstants.Exit, StringComparison.OrdinalIgnoreCase);
-        private bool IsShowPlayerCommand() =>
-            _command.Trim().StartsWith($"{ConsoleConstants.ShowPlayer} ", StringComparison.OrdinalIgnoreCase);
-        private bool IsShowPlayoffsCommand() =>
-            string.Equals(_command.Trim(), ConsoleConstants.ShowPlayoffs, StringComparison.OrdinalIgnoreCase)
-            || string.Equals(_command.Trim(), ConsoleConstants.ShowPlayoffPicture, StringComparison.OrdinalIgnoreCase);
-        private bool IsShowSpecificTeamCommand() =>
-            _command.Trim().StartsWith($"{ConsoleConstants.ShowTeam} ", StringComparison.OrdinalIgnoreCase);
-        private bool IsDraftPlaceholderCommand() =>
-            _command.Trim().StartsWith("pick ", StringComparison.OrdinalIgnoreCase)
-            || _command.Trim().StartsWith("ban ", StringComparison.OrdinalIgnoreCase);
         private void Redraw() => _screenRenderer.Render(_currentScreenModel);
 
         private void HandleInteractiveKey(ConsoleKeyInfo key, bool allowReplayHotkeys)
@@ -3183,46 +2939,8 @@ namespace ConsoleApp.Objects
         /// <param name="catalog">The available champion catalog.</param>
         /// <param name="seed">The deterministic round seed.</param>
         /// <returns>The selected temporary round roster.</returns>
-        public static RoundRoster CreateTemporaryRoundRoster(IReadOnlyList<ChampionDefinition> catalog, int seed)
-        {
-            ArgumentNullException.ThrowIfNull(catalog);
-
-            if (catalog.Count < TeamRosterSize * 2)
-            {
-                throw new ArgumentException("Catalog must contain at least 10 champions to create a temporary round roster.", nameof(catalog));
-            }
-
-            List<ChampionDefinition> fighters = GetShuffledRoleChampions(
-                catalog,
-                ChampionRole.Fighter,
-                RequiredFighterCount,
-                seed);
-            List<ChampionDefinition> mages = GetShuffledRoleChampions(catalog, ChampionRole.Mage, RequiredMageCount, seed);
-            List<ChampionDefinition> marksmen = GetShuffledRoleChampions(
-                catalog,
-                ChampionRole.Marksman,
-                RequiredMarksmanCount,
-                seed);
-            List<ChampionDefinition> supports = GetShuffledRoleChampions(
-                catalog,
-                ChampionRole.Support,
-                RequiredSupportCount,
-                seed);
-
-            return new RoundRoster
-            {
-                BlueChampions = CreateRoleBalancedTeam(
-                    fighters.Take(2),
-                    mages.Take(1),
-                    marksmen.Take(1),
-                    supports.Take(1)),
-                RedChampions = CreateRoleBalancedTeam(
-                    fighters.Skip(2).Take(2),
-                    mages.Skip(1).Take(1),
-                    marksmen.Skip(1).Take(1),
-                    supports.Skip(1).Take(1))
-            };
-        }
+        public static RoundRoster CreateTemporaryRoundRoster(IReadOnlyList<ChampionDefinition> catalog, int seed) =>
+            new TemporaryRoundRosterFactory().Create(catalog, seed);
 
         private static Coach GetHumanCoach(WorldState world) =>
             world.Coaches.Single(coach => coach.IsHuman);
@@ -3758,47 +3476,5 @@ namespace ConsoleApp.Objects
             return string.Join(Environment.NewLine, lines);
         }
 
-        private static List<ChampionDefinition> GetShuffledRoleChampions(
-            IEnumerable<ChampionDefinition> catalog,
-            ChampionRole role,
-            int requiredCount,
-            int seed)
-        {
-            List<ChampionDefinition> champions = catalog
-                .Where(champion => champion.Role == role)
-                .ToList();
-
-            if (champions.Count < requiredCount)
-            {
-                throw new ArgumentException(
-                    $"Catalog must contain at least {requiredCount} {role} champions to create a temporary round roster.",
-                    nameof(catalog));
-            }
-
-            Shuffle(champions, seed + ((int)role * 397));
-            return champions;
-        }
-
-        private static IReadOnlyList<ChampionDefinition> CreateRoleBalancedTeam(
-            IEnumerable<ChampionDefinition> fighters,
-            IEnumerable<ChampionDefinition> mages,
-            IEnumerable<ChampionDefinition> marksmen,
-            IEnumerable<ChampionDefinition> supports) =>
-        [
-            .. fighters,
-            .. mages,
-            .. marksmen,
-            .. supports
-        ];
-
-        private static void Shuffle(IList<ChampionDefinition> champions, int seed)
-        {
-            Random rng = new(seed);
-            for (int index = champions.Count - 1; index > 0; index--)
-            {
-                int swapIndex = rng.Next(index + 1);
-                (champions[index], champions[swapIndex]) = (champions[swapIndex], champions[index]);
-            }
-        }
     }
 }

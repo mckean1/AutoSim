@@ -12,12 +12,14 @@ namespace ConsoleApp.Services
         private readonly AggregateRoundAnalyzer _aggregateAnalyzer;
         private readonly RoundLogAnalyzer _roundLogAnalyzer;
         private readonly RoundLogWriter _roundLogWriter;
+        private readonly TemporaryRoundRosterFactory _temporaryRoundRosterFactory;
 
         public RoundBatchSimulator(RoundLogWriter roundLogWriter)
         {
             _roundLogWriter = roundLogWriter ?? throw new ArgumentNullException(nameof(roundLogWriter));
             _roundLogAnalyzer = new RoundLogAnalyzer();
             _aggregateAnalyzer = new AggregateRoundAnalyzer();
+            _temporaryRoundRosterFactory = new TemporaryRoundRosterFactory();
         }
 
         public AggregateRoundAnalysis Simulate(int count, int baseSeed)
@@ -32,7 +34,7 @@ namespace ConsoleApp.Services
             for (int index = 0; index < count; index++)
             {
                 int seed = baseSeed + index;
-                RoundRoster roster = ConsoleApplication.CreateTemporaryRoundRoster(catalog, seed);
+                RoundRoster roster = _temporaryRoundRosterFactory.Create(catalog, seed);
                 RoundResult result = new RoundEngine().Simulate(roster, seed);
                 _roundLogWriter.WriteEvents(result.Events, seed);
                 analyses.Add(_roundLogAnalyzer.Analyze(result.Events));

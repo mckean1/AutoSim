@@ -367,6 +367,28 @@ namespace ConsoleApp.Tests.Objects
         }
 
         [Test]
+        public void ExecuteCommand_SimulateRoundsPrefixWithoutSeparator_PrintsUnknownCommand()
+        {
+            string directory = CreateTempDirectory();
+            ConsoleApplication application = new(directory, () => 1000);
+
+            string output = application.ExecuteCommand("simulate roundsxyz");
+
+            Assert.That(output, Does.Contain("Unknown command: simulate roundsxyz"));
+        }
+
+        [Test]
+        public void ExecuteCommand_AnalyzeRoundsWithOuterWhitespace_RoutesToAnalyzeRounds()
+        {
+            string directory = CreateTempDirectory();
+            ConsoleApplication application = new(directory, () => 1000);
+
+            string output = application.ExecuteCommand(" analyze rounds ");
+
+            Assert.That(output, Does.Contain($"No round logs found in {directory}"));
+        }
+
+        [Test]
         public void ExecuteCommand_ManagementCommands_RunNewGameFlow()
         {
             string directory = CreateTempDirectory();
