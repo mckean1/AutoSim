@@ -171,7 +171,7 @@ namespace ConsoleApp.Tests.Objects
                 Assert.That(leagueOutput, Does.Contain("Standings"));
                 Assert.That(scheduleOutput, Does.Contain("Scheduled matches"));
                 Assert.That(matchOutput, Does.Contain("Match Preview"));
-                Assert.That(matchOutput, Does.Contain("Commands: continue | cancel | show team | show opponent"));
+                Assert.That(matchOutput, Does.Contain("Commands: continue | cancel | show team | show opponent | help"));
             });
         }
 
@@ -203,41 +203,96 @@ namespace ConsoleApp.Tests.Objects
         }
 
         [Test]
-        public void ExecuteCommand_ContinueAfterStartMatch_RoutesThroughMatchEngineWrapper()
+        public void ExecuteCommand_MatchPresentationFlow_RoutesThroughMatchEngineWrapper()
         {
             string directory = CreateTempDirectory();
             CountingMatchEngineWrapper matchEngineWrapper = new();
             ConsoleApplication application = new(directory, () => 123, matchEngineWrapper);
             application.ExecuteCommand("start");
             application.ExecuteCommand("start match");
+            string draftOutput = application.ExecuteCommand("continue");
+            string draftSummaryOutput = application.ExecuteCommand("auto draft");
 
-            string output = application.ExecuteCommand("continue");
+            string replayOutput = application.ExecuteCommand("continue");
 
             Assert.Multiple(() =>
             {
+                Assert.That(draftOutput, Does.Contain("Draft"));
+                Assert.That(draftSummaryOutput, Does.Contain("Draft Summary"));
                 Assert.That(matchEngineWrapper.CallCount, Is.GreaterThan(0));
-                Assert.That(output, Does.Contain("Resolved week 1:"));
-                Assert.That(output, Does.Contain("Home"));
-                Assert.That(output, Does.Contain("won"));
+                Assert.That(replayOutput, Does.Contain("Live Replay"));
+                Assert.That(replayOutput, Does.Contain("Recent Events"));
             });
         }
 
         [Test]
-        public void ExecuteCommand_ContinueAfterStartMatch_AdvancesExactlyOneWeek()
+        public void ExecuteCommand_MatchPresentationFlow_AdvancesExactlyOneWeek()
         {
             string directory = CreateTempDirectory();
             ConsoleApplication application = new(directory, () => 123, new CountingMatchEngineWrapper());
             application.ExecuteCommand("start");
 
             application.ExecuteCommand("start match");
-            string firstOutput = application.ExecuteCommand("continue");
+            application.ExecuteCommand("continue");
+            application.ExecuteCommand("auto draft");
+            application.ExecuteCommand("continue");
+            application.ExecuteCommand("skip");
+            string firstOutput = application.ExecuteCommand("match summary");
+            application.ExecuteCommand("continue");
             application.ExecuteCommand("start match");
+            application.ExecuteCommand("continue");
+            application.ExecuteCommand("auto draft");
             string secondOutput = application.ExecuteCommand("continue");
 
             Assert.Multiple(() =>
             {
-                Assert.That(firstOutput, Does.Contain("Resolved week 1:"));
-                Assert.That(secondOutput, Does.Contain("Resolved week 2:"));
+                Assert.That(firstOutput, Does.Contain("Final match score:"));
+                Assert.That(secondOutput, Does.Contain("Week 3"));
+            });
+        }
+
+        [Test]
+        public void ExecuteCommand_LiveReplayStep_ShowsRecentReadableMessages()
+        {
+            string directory = CreateTempDirectory();
+            ConsoleApplication application = new(directory, () => 123, new CountingMatchEngineWrapper());
+            application.ExecuteCommand("start");
+            application.ExecuteCommand("start match");
+            application.ExecuteCommand("continue");
+            application.ExecuteCommand("auto draft");
+            application.ExecuteCommand("continue");
+
+            string output = application.ExecuteCommand("step");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(output, Does.Contain("Live Replay"));
+                Assert.That(output, Does.Contain("Recent Events"));
+                Assert.That(output, Does.Contain("hits").Or.Contain("fight"));
+                Assert.That(output, Does.Not.Contain("ChampionInstance"));
+            });
+        }
+
+        [Test]
+        public void ExecuteCommand_SkipReplay_ShowsRoundAndMatchSummaries()
+        {
+            string directory = CreateTempDirectory();
+            ConsoleApplication application = new(directory, () => 123, new CountingMatchEngineWrapper());
+            application.ExecuteCommand("start");
+            application.ExecuteCommand("start match");
+            application.ExecuteCommand("continue");
+            application.ExecuteCommand("auto draft");
+            application.ExecuteCommand("continue");
+
+            string roundSummary = application.ExecuteCommand("skip");
+            string matchSummary = application.ExecuteCommand("match summary");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(roundSummary, Does.Contain("Round Summary"));
+                Assert.That(roundSummary, Does.Contain("Key moments"));
+                Assert.That(matchSummary, Does.Contain("Match Summary"));
+                Assert.That(matchSummary, Does.Contain("Final match score:"));
             });
         }
 

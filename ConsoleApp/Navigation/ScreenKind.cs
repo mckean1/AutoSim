@@ -28,6 +28,31 @@ namespace ConsoleApp.Navigation
         /// <summary>
         /// The match preview screen.
         /// </summary>
-        MatchPreview
+        MatchPreview,
+
+        /// <summary>
+        /// The draft screen.
+        /// </summary>
+        Draft,
+
+        /// <summary>
+        /// The draft summary screen.
+        /// </summary>
+        DraftSummary,
+
+        /// <summary>
+        /// The live replay screen.
+        /// </summary>
+        LiveReplay,
+
+        /// <summary>
+        /// The round summary screen.
+        /// </summary>
+        RoundSummary,
+
+        /// <summary>
+        /// The match summary screen.
+        /// </summary>
+        MatchSummary
     }
 }
