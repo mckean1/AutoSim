@@ -494,6 +494,41 @@ namespace ConsoleApp.Tests.Objects
         }
 
         [Test]
+        public void ExecuteCommand_LiveReplay_StartsAtZeroBeforeAnyStep()
+        {
+            string directory = CreateTempDirectory();
+            ConsoleApplication application = new(directory, () => 123, new CountingMatchEngineWrapper());
+            CompleteNewGameSetup(application);
+            application.ExecuteCommand("start match");
+            application.ExecuteCommand("continue");
+            application.ExecuteCommand("auto draft");
+
+            string output = application.ExecuteCommand("continue");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(output, Does.Contain("Round 1 | 00:00 / 05:00"));
+                Assert.That(output, Does.Contain("Recent Events"));
+            });
+        }
+
+        [Test]
+        public void ExecuteCommand_LiveReplayStep_UsesMessageTimestampAsReplayTime()
+        {
+            string directory = CreateTempDirectory();
+            ConsoleApplication application = new(directory, () => 123, new CountingMatchEngineWrapper());
+            CompleteNewGameSetup(application);
+            application.ExecuteCommand("start match");
+            application.ExecuteCommand("continue");
+            application.ExecuteCommand("auto draft");
+            application.ExecuteCommand("continue");
+
+            string output = application.ExecuteCommand("step");
+
+            Assert.That(output, Does.Contain("Round 1 | 00:18 / 05:00"));
+        }
+
+        [Test]
         public void ExecuteCommand_SkipReplay_ShowsRoundAndMatchSummaries()
         {
             string directory = CreateTempDirectory();

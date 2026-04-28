@@ -6,6 +6,11 @@ namespace ConsoleApp.Presentation
     public sealed class LiveReplayState
     {
         /// <summary>
+        /// Gets or sets the current playback time.
+        /// </summary>
+        public TimeSpan CurrentPlaybackTime { get; set; }
+
+        /// <summary>
         /// Gets or sets the current revealed event count.
         /// </summary>
         public int CurrentEventIndex { get; set; }
@@ -30,6 +35,7 @@ namespace ConsoleApp.Presentation
         /// </summary>
         public void Reset()
         {
+            CurrentPlaybackTime = TimeSpan.Zero;
             CurrentEventIndex = 0;
             PlaybackState = ReplayPlaybackState.Paused;
             ReplaySpeed = ReplaySpeed.Normal;

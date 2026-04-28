@@ -22,6 +22,7 @@ namespace ConsoleApp.Objects
         private const int RequiredMarksmanCount = 2;
         private const int RequiredSupportCount = 2;
         private static readonly TimeSpan ReplayPollDelay = TimeSpan.FromMilliseconds(25);
+        private DateTime _replayPlaybackStartedAtUtc;
 
         private string _command;
         private string _previousCommand;
@@ -75,6 +76,7 @@ namespace ConsoleApp.Objects
             _previousCommand = string.Empty;
             _isProcessingCommand = false;
             _nextReplayAdvanceAtUtc = DateTime.MinValue;
+            _replayPlaybackStartedAtUtc = DateTime.MinValue;
             _logDirectory = logDirectory;
             _roundAnalysisRenderer = new RoundAnalysisRenderer();
             _aggregateRoundAnalysisRenderer = new AggregateRoundAnalysisRenderer();
@@ -908,6 +910,7 @@ namespace ConsoleApp.Objects
                 return TransitionAfterReplayComplete("Round replay complete.");
             }
 
+            _replayPlaybackStartedAtUtc = DateTime.UtcNow - _matchPresentationState.LiveReplay.CurrentPlaybackTime;
             _matchPresentationState.LiveReplay.PlaybackState = ReplayPlaybackState.Playing;
             ScheduleNextReplayAdvance(immediate: true);
             return ViewLiveReplay();
@@ -920,6 +923,7 @@ namespace ConsoleApp.Objects
                 return RenderCurrentScreen("No active replay.");
             }
 
+            UpdateReplayPlaybackClock();
             _matchPresentationState.LiveReplay.PlaybackState = ReplayPlaybackState.Paused;
             return ViewLiveReplay();
         }
@@ -989,7 +993,11 @@ namespace ConsoleApp.Objects
                 return;
             }
 
-            if (!TryAdvanceReplay())
+            UpdateReplayPlaybackClock();
+
+            TryAdvanceReplayToCurrentTime();
+
+            if (_matchPresentationState.LiveReplay.PlaybackState == ReplayPlaybackState.Complete)
             {
                 TransitionAfterReplayComplete();
                 _screenRenderer.Render(_currentScreenModel, _command);
@@ -999,6 +1007,51 @@ namespace ConsoleApp.Objects
             ViewLiveReplay();
             _screenRenderer.Render(_currentScreenModel, _command);
             ScheduleNextReplayAdvance(immediate: false);
+        }
+
+        private void UpdateReplayPlaybackClock()
+        {
+            if (_matchPresentationState.LiveReplay.PlaybackState != ReplayPlaybackState.Playing)
+            {
+                return;
+            }
+
+            _matchPresentationState.LiveReplay.CurrentPlaybackTime = _replayPlaybackStartedAtUtc == DateTime.MinValue
+                ? TimeSpan.Zero
+                : DateTime.UtcNow - _replayPlaybackStartedAtUtc;
+        }
+
+        private bool TryAdvanceReplayToCurrentTime()
+        {
+            if (_matchPresentationState.PresentedMatch is null)
+            {
+                return false;
+            }
+
+            PresentedRound round = _matchPresentationState.PresentedMatch.Rounds[_matchPresentationState.RoundIndex];
+            int currentIndex = _matchPresentationState.LiveReplay.CurrentEventIndex;
+            bool advanced = false;
+
+            while (currentIndex < round.Messages.Count
+                && round.Messages[currentIndex].Timestamp <= _matchPresentationState.LiveReplay.CurrentPlaybackTime)
+            {
+                currentIndex++;
+                advanced = true;
+            }
+
+            if (advanced)
+            {
+                _matchPresentationState.LiveReplay.CurrentEventIndex = currentIndex;
+            }
+
+            if (_matchPresentationState.LiveReplay.CurrentEventIndex >= round.Messages.Count)
+            {
+                _matchPresentationState.LiveReplay.CurrentEventIndex = round.Messages.Count;
+                _matchPresentationState.LiveReplay.CurrentPlaybackTime = round.Messages[^1].Timestamp;
+                _matchPresentationState.LiveReplay.PlaybackState = ReplayPlaybackState.Complete;
+            }
+
+            return advanced;
         }
 
         private bool TryAdvanceReplay()
@@ -1017,9 +1070,11 @@ namespace ConsoleApp.Objects
             }
 
             _matchPresentationState.LiveReplay.CurrentEventIndex++;
+            _matchPresentationState.LiveReplay.CurrentPlaybackTime = round.Messages[_matchPresentationState.LiveReplay.CurrentEventIndex - 1].Timestamp;
             if (_matchPresentationState.LiveReplay.CurrentEventIndex >= round.Messages.Count)
             {
                 _matchPresentationState.LiveReplay.CurrentEventIndex = round.Messages.Count;
+                _matchPresentationState.LiveReplay.CurrentPlaybackTime = round.Messages[^1].Timestamp;
                 _matchPresentationState.LiveReplay.PlaybackState = ReplayPlaybackState.Complete;
             }
 
@@ -1029,6 +1084,7 @@ namespace ConsoleApp.Objects
         private string TransitionAfterReplayComplete(string? message = null)
         {
             _matchPresentationState.LiveReplay.PlaybackState = ReplayPlaybackState.Complete;
+            _replayPlaybackStartedAtUtc = DateTime.MinValue;
             _nextReplayAdvanceAtUtc = DateTime.MinValue;
 
             if (_matchPresentationState.PresentedMatch is null)
@@ -2039,13 +2095,15 @@ namespace ConsoleApp.Objects
             PresentedMatch presentedMatch = state.PresentedMatch!;
             PresentedRound round = presentedMatch.Rounds[state.RoundIndex];
             LiveReplayState replay = state.LiveReplay;
-            int revealedCount = Math.Min(Math.Max(1, replay.CurrentEventIndex), round.Messages.Count);
+            int revealedCount = Math.Min(replay.CurrentEventIndex, round.Messages.Count);
             IReadOnlyList<ReplayMessage> visibleMessages = round.Messages
                 .Take(revealedCount)
                 .Reverse()
                 .Take(replay.VisibleMessageCount)
                 .ToList();
-            ReplayMessage currentMessage = round.Messages[Math.Max(0, revealedCount - 1)];
+            TimeSpan currentTime = replay.PlaybackState == ReplayPlaybackState.Complete && round.Messages.Count > 0
+                ? round.Messages[^1].Timestamp
+                : replay.CurrentPlaybackTime;
             int blueRoundWins = presentedMatch.Rounds
                 .Take(state.RoundIndex)
                 .Count(presentedRound => string.Equals(
@@ -2057,7 +2115,7 @@ namespace ConsoleApp.Objects
             List<string> lines =
             [
                 $"{FormatTeamName(world, presentedMatch.Result.BlueTeamId)} vs {FormatTeamName(world, presentedMatch.Result.RedTeamId)}",
-                $"Round {round.Result.RoundNumber} | {FormatTimestamp(currentMessage.Timestamp)} / 05:00 | {FormatReplayPlaybackState(replay.PlaybackState)} | Speed: {replay.ReplaySpeed}",
+                $"Round {round.Result.RoundNumber} | {FormatTimestamp(currentTime)} / 05:00 | {FormatReplayPlaybackState(replay.PlaybackState)} | Speed: {replay.ReplaySpeed}",
                 $"Match score: {blueRoundWins}-{redRoundWins}",
                 $"{FormatTeamName(world, presentedMatch.Result.BlueTeamId)} 0 | {FormatTeamName(world, presentedMatch.Result.RedTeamId)} 0",
                 string.Empty,
