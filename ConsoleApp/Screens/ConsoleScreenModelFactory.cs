@@ -4,7 +4,7 @@ using ConsoleApp.Navigation;
 namespace ConsoleApp.Screens
 {
     /// <summary>
-    /// Builds screen render models for application screens with minimal domain dependencies.
+    /// Builds general console screen render models.
     /// </summary>
     internal sealed class ConsoleScreenModelFactory
     {
