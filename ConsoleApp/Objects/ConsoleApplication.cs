@@ -34,6 +34,9 @@ namespace ConsoleApp.Objects
         private readonly RoundLogWriter _roundLogWriter;
         private readonly RoundReportWriter _roundReportWriter;
         private readonly MatchPresentationState _matchPresentationState;
+        private readonly MatchReviewFactory _matchReviewFactory;
+        private readonly MatchReviewStore _matchReviewStore;
+        private readonly ReplayReviewState _replayReviewState;
         private readonly ReplayPresenter _replayPresenter;
         private readonly RoundDraftValidator _roundDraftValidator;
         private readonly DeterministicRoundDraftService _roundDraftService;
@@ -42,6 +45,12 @@ namespace ConsoleApp.Objects
         private readonly SeasonProgressionService _seasonProgressionService;
         private readonly Func<int> _seedProvider;
         private readonly WorldGenerationService _worldGenerationService;
+        private ChampionDefinition? _selectedChampion;
+        private ChampionRole? _championCatalogFilter;
+        private ScreenKind _championCatalogBackScreen;
+        private ScreenKind _championDetailBackScreen;
+        private ScreenKind _reviewBackScreen;
+        private int _selectedReviewRoundNumber;
         private ScheduledMatch? _pendingMatch;
         private ScreenRenderModel _currentScreenModel;
         private WorldState? _world;
@@ -66,6 +75,9 @@ namespace ConsoleApp.Objects
             _roundLogWriter = new RoundLogWriter(logDirectory);
             _roundReportWriter = new RoundReportWriter(logDirectory);
             _matchPresentationState = new MatchPresentationState();
+            _matchReviewFactory = new MatchReviewFactory();
+            _matchReviewStore = new MatchReviewStore();
+            _replayReviewState = new ReplayReviewState();
             _replayPresenter = new ReplayPresenter();
             _roundDraftValidator = new RoundDraftValidator();
             _roundDraftService = new DeterministicRoundDraftService();
@@ -74,6 +86,10 @@ namespace ConsoleApp.Objects
             _seasonProgressionService = new SeasonProgressionService(matchEngineWrapper);
             _seedProvider = seedProvider ?? (() => Environment.TickCount);
             _worldGenerationService = new WorldGenerationService();
+            _championCatalogBackScreen = ScreenKind.Home;
+            _championDetailBackScreen = ScreenKind.ChampionCatalog;
+            _reviewBackScreen = ScreenKind.Home;
+            _selectedReviewRoundNumber = 1;
             _currentScreenModel = BuildWelcomeScreen();
         }
 
@@ -164,6 +180,51 @@ namespace ConsoleApp.Objects
                 return RenderMatchPreview();
             }
 
+            if (IsViewLastMatchCommand())
+            {
+                return ViewLastMatch();
+            }
+
+            if (IsViewRoundCommand())
+            {
+                return ViewRound();
+            }
+
+            if (IsNextPageCommand())
+            {
+                return NextReplayReviewPage();
+            }
+
+            if (IsPreviousPageCommand())
+            {
+                return PreviousReplayReviewPage();
+            }
+
+            if (IsPreviousRoundCommand())
+            {
+                return PreviousReviewRound();
+            }
+
+            if (IsBackCommand())
+            {
+                return Back();
+            }
+
+            if (IsClearFilterCommand())
+            {
+                return ClearChampionFilter();
+            }
+
+            if (IsFilterRoleCommand())
+            {
+                return FilterChampionRole();
+            }
+
+            if (IsShowChampionCommand())
+            {
+                return ShowChampion();
+            }
+
             if (IsContinueCommand())
             {
                 return ContinueMatchFlow();
@@ -211,7 +272,7 @@ namespace ConsoleApp.Objects
 
             if (IsMatchSummaryCommand())
             {
-                return RenderMatchSummary();
+                return MatchSummaryCommand();
             }
 
             if (IsViewRoundsCommand())
@@ -321,12 +382,18 @@ namespace ConsoleApp.Objects
             string.Equals(_command.Trim(), ConsoleConstants.StartMatch, StringComparison.OrdinalIgnoreCase);
         private bool IsAutoDraftCommand() =>
             string.Equals(_command.Trim(), ConsoleConstants.AutoDraft, StringComparison.OrdinalIgnoreCase);
+        private bool IsBackCommand() =>
+            string.Equals(_command.Trim(), ConsoleConstants.Back, StringComparison.OrdinalIgnoreCase);
         private bool IsCancelCommand() =>
             string.Equals(_command.Trim(), ConsoleConstants.Cancel, StringComparison.OrdinalIgnoreCase);
+        private bool IsClearFilterCommand() =>
+            string.Equals(_command.Trim(), ConsoleConstants.ClearFilter, StringComparison.OrdinalIgnoreCase);
         private bool IsContinueCommand() =>
             string.Equals(_command.Trim(), ConsoleConstants.Continue, StringComparison.OrdinalIgnoreCase);
         private bool IsDetailsCommand() =>
             string.Equals(_command.Trim(), ConsoleConstants.Details, StringComparison.OrdinalIgnoreCase);
+        private bool IsFilterRoleCommand() =>
+            _command.Trim().StartsWith($"{ConsoleConstants.FilterRole} ", StringComparison.OrdinalIgnoreCase);
         private bool IsFasterCommand() =>
             string.Equals(_command.Trim(), ConsoleConstants.Faster, StringComparison.OrdinalIgnoreCase);
         private bool IsHomeCommand() =>
@@ -335,14 +402,22 @@ namespace ConsoleApp.Objects
             string.Equals(_command.Trim(), ConsoleConstants.MatchSummary, StringComparison.OrdinalIgnoreCase);
         private bool IsNextRoundCommand() =>
             string.Equals(_command.Trim(), ConsoleConstants.NextRound, StringComparison.OrdinalIgnoreCase);
+        private bool IsNextPageCommand() =>
+            string.Equals(_command.Trim(), ConsoleConstants.NextPage, StringComparison.OrdinalIgnoreCase);
         private bool IsPauseCommand() =>
             string.Equals(_command.Trim(), ConsoleConstants.Pause, StringComparison.OrdinalIgnoreCase);
         private bool IsPlayCommand() =>
             string.Equals(_command.Trim(), ConsoleConstants.Play, StringComparison.OrdinalIgnoreCase);
+        private bool IsPreviousPageCommand() =>
+            string.Equals(_command.Trim(), ConsoleConstants.PreviousPage, StringComparison.OrdinalIgnoreCase);
+        private bool IsPreviousRoundCommand() =>
+            string.Equals(_command.Trim(), ConsoleConstants.PreviousRound, StringComparison.OrdinalIgnoreCase);
         private bool IsQuitReplayCommand() =>
             string.Equals(_command.Trim(), ConsoleConstants.QuitReplay, StringComparison.OrdinalIgnoreCase);
         private bool IsShowChampionsCommand() =>
             string.Equals(_command.Trim(), ConsoleConstants.ShowChampions, StringComparison.OrdinalIgnoreCase);
+        private bool IsShowChampionCommand() =>
+            _command.Trim().StartsWith("show champion ", StringComparison.OrdinalIgnoreCase);
         private bool IsShowLeagueCommand() =>
             string.Equals(_command.Trim(), ConsoleConstants.ShowLeague, StringComparison.OrdinalIgnoreCase);
         private bool IsShowOpponentCommand() =>
@@ -359,6 +434,10 @@ namespace ConsoleApp.Objects
             string.Equals(_command.Trim(), ConsoleConstants.Step, StringComparison.OrdinalIgnoreCase);
         private bool IsViewReplayCommand() =>
             string.Equals(_command.Trim(), ConsoleConstants.ViewReplay, StringComparison.OrdinalIgnoreCase);
+        private bool IsViewLastMatchCommand() =>
+            string.Equals(_command.Trim(), ConsoleConstants.ViewLastMatch, StringComparison.OrdinalIgnoreCase);
+        private bool IsViewRoundCommand() =>
+            _command.Trim().StartsWith("view round ", StringComparison.OrdinalIgnoreCase);
         private bool IsViewRoundsCommand() =>
             string.Equals(_command.Trim(), ConsoleConstants.ViewRounds, StringComparison.OrdinalIgnoreCase);
         private bool IsAnalyzeRoundCommand() =>
@@ -438,6 +517,10 @@ namespace ConsoleApp.Objects
                 humanResult,
                 ChampionCatalog.GetDefaultChampions(),
                 teamId => FormatTeamName(_world, teamId));
+            _matchReviewStore.LastMatch = _matchReviewFactory.Create(
+                _matchPresentationState.PresentedMatch,
+                resolvedWeek,
+                teamId => FormatTeamName(_world, teamId));
             _matchPresentationState.RoundIndex = 0;
             _matchPresentationState.ReplayIndex = 1;
             _pendingMatch = null;
@@ -488,6 +571,11 @@ namespace ConsoleApp.Objects
 
         private string NextRound()
         {
+            if (_screenNavigationState.CurrentScreen == ScreenKind.RoundReview && _matchReviewStore.LastMatch is not null)
+            {
+                return RenderRoundReview(_selectedReviewRoundNumber + 1);
+            }
+
             if (_matchPresentationState.PresentedMatch is null)
             {
                 return RenderCurrentScreen("No round summaries are available.");
@@ -500,10 +588,20 @@ namespace ConsoleApp.Objects
 
             _matchPresentationState.RoundIndex++;
             _matchPresentationState.ReplayIndex = 1;
-            return ViewReplay();
+            return ViewLiveReplay();
         }
 
         private string ViewReplay()
+        {
+            if (_matchReviewStore.LastMatch is null)
+            {
+                return RenderCurrentScreen("No completed match is available yet.");
+            }
+
+            return RenderReplayReview();
+        }
+
+        private string ViewLiveReplay()
         {
             if (_world is null || _matchPresentationState.PresentedMatch is null)
             {
@@ -519,6 +617,19 @@ namespace ConsoleApp.Objects
 
         private string ViewRounds()
         {
+            if (_matchReviewStore.LastMatch is null)
+            {
+                return RenderCurrentScreen("No completed match is available yet.");
+            }
+
+            SetReviewBackScreen();
+            _screenNavigationState.CurrentScreen = ScreenKind.RoundList;
+            _currentScreenModel = BuildRoundListScreen(_world, _matchReviewStore.LastMatch);
+            return _screenRenderer.RenderToString(_currentScreenModel);
+        }
+
+        private string ViewActiveRoundSummary()
+        {
             if (_matchPresentationState.PresentedMatch is null)
             {
                 return RenderCurrentScreen("No round summaries are available.");
@@ -526,6 +637,121 @@ namespace ConsoleApp.Objects
 
             _matchPresentationState.RoundIndex = 0;
             return RenderRoundSummary();
+        }
+
+        private string ViewLastMatch()
+        {
+            if (_matchReviewStore.LastMatch is null)
+            {
+                return RenderCurrentScreen("No completed match is available yet.");
+            }
+
+            SetReviewBackScreen();
+            _screenNavigationState.CurrentScreen = ScreenKind.LastMatchReview;
+            _currentScreenModel = BuildLastMatchReviewScreen(_world, _matchReviewStore.LastMatch);
+            return _screenRenderer.RenderToString(_currentScreenModel);
+        }
+
+        private string ViewRound()
+        {
+            if (_matchReviewStore.LastMatch is null)
+            {
+                return RenderCurrentScreen("No completed match is available yet.");
+            }
+
+            string value = _command.Trim()["view round ".Length..].Trim();
+            if (!int.TryParse(value, out int roundNumber))
+            {
+                return RenderCurrentScreen($"Round {value} is not available.");
+            }
+
+            return RenderRoundReview(roundNumber);
+        }
+
+        private string PreviousReviewRound()
+        {
+            if (_matchReviewStore.LastMatch is null)
+            {
+                return RenderCurrentScreen("No completed match is available yet.");
+            }
+
+            return RenderRoundReview(_selectedReviewRoundNumber - 1);
+        }
+
+        private string NextReplayReviewPage()
+        {
+            if (_matchReviewStore.LastMatch is null)
+            {
+                return RenderCurrentScreen("No completed match is available yet.");
+            }
+
+            int pageCount = GetReplayReviewPageCount(_matchReviewStore.LastMatch, _replayReviewState);
+            _replayReviewState.PageIndex = Math.Min(_replayReviewState.PageIndex + 1, Math.Max(0, pageCount - 1));
+            return RenderReplayReview(preserveBackScreen: true);
+        }
+
+        private string PreviousReplayReviewPage()
+        {
+            if (_matchReviewStore.LastMatch is null)
+            {
+                return RenderCurrentScreen("No completed match is available yet.");
+            }
+
+            _replayReviewState.PageIndex = Math.Max(0, _replayReviewState.PageIndex - 1);
+            return RenderReplayReview(preserveBackScreen: true);
+        }
+
+        private string RenderRoundReview(int roundNumber, string? message = null)
+        {
+            MatchReview? matchReview = _matchReviewStore.LastMatch;
+            if (matchReview is null)
+            {
+                return RenderCurrentScreen("No completed match is available yet.");
+            }
+
+            RoundReview? roundReview = matchReview.Rounds.FirstOrDefault(round => round.RoundNumber == roundNumber);
+            if (roundReview is null)
+            {
+                return RenderCurrentScreen($"Round {roundNumber} is not available.");
+            }
+
+            SetReviewBackScreen(includeReviewScreen: true);
+            _selectedReviewRoundNumber = roundNumber;
+            _screenNavigationState.CurrentScreen = ScreenKind.RoundReview;
+            _currentScreenModel = BuildRoundReviewScreen(_world, matchReview, roundReview, message);
+            return _screenRenderer.RenderToString(_currentScreenModel);
+        }
+
+        private string MatchSummaryCommand()
+        {
+            if (_matchPresentationState.PresentedMatch is not null)
+            {
+                return RenderMatchSummary();
+            }
+
+            return ViewLastMatch();
+        }
+
+        private string RenderReplayReview(string? message = null, bool preserveBackScreen = false)
+        {
+            MatchReview? matchReview = _matchReviewStore.LastMatch;
+            if (matchReview is null)
+            {
+                return RenderCurrentScreen("No completed match is available yet.");
+            }
+
+            if (!preserveBackScreen)
+            {
+                SetReviewBackScreen(includeReviewScreen: true);
+                int? roundNumber = _screenNavigationState.CurrentScreen == ScreenKind.RoundReview
+                    ? _selectedReviewRoundNumber
+                    : null;
+                _replayReviewState.Reset(roundNumber);
+            }
+
+            _screenNavigationState.CurrentScreen = ScreenKind.ReplayReview;
+            _currentScreenModel = BuildReplayReviewScreen(_world, matchReview, _replayReviewState, message);
+            return _screenRenderer.RenderToString(_currentScreenModel);
         }
 
         private string CompleteMatchFlow()
@@ -656,36 +882,116 @@ namespace ConsoleApp.Objects
         {
             if (_world is null)
             {
-                return RenderCurrentScreen("No game has been started. Use start first.");
+                return RenderChampionCatalog();
             }
 
-            Team humanTeam = GetHumanTeam(_world);
-            League league = GetTeamLeague(_world, humanTeam);
-            IReadOnlyList<string> championNames = ChampionCatalog.GetDefaultChampions()
-                .OrderBy(champion => champion.Role)
-                .ThenBy(champion => champion.Name, StringComparer.Ordinal)
-                .Select(champion => $"{champion.Role,-9} {champion.Name}")
-                .ToList();
-            _currentScreenModel = new ScreenRenderModel
+            if (_screenNavigationState.CurrentScreen is not ScreenKind.ChampionCatalog and not ScreenKind.ChampionDetail)
             {
-                Commands =
-                [
-                    ConsoleConstants.Continue,
-                    ConsoleConstants.AutoDraft,
-                    ConsoleConstants.Cancel,
-                    ConsoleConstants.Help
-                ],
-                ContentLines =
-                [
-                    "Available champions",
-                    "Role      Champion",
-                    .. championNames.Take(24)
-                ],
-                Header = BuildHeader(_world, humanTeam, league),
-                Title = "Champions"
-            };
+                _championCatalogBackScreen = _screenNavigationState.CurrentScreen;
+            }
+
+            return RenderChampionCatalog();
+        }
+
+        private string ShowChampion()
+        {
+            string query = _command.Trim()["show champion ".Length..].Trim();
+            if (string.IsNullOrWhiteSpace(query))
+            {
+                return RenderCurrentScreen("No champion found matching: ");
+            }
+
+            IReadOnlyList<ChampionDefinition> matches = FindChampionMatches(query);
+            if (matches.Count == 0)
+            {
+                return RenderCurrentScreen($"No champion found matching: {query}");
+            }
+
+            if (matches.Count > 1)
+            {
+                return RenderCurrentScreen($"Multiple champions match: {string.Join(", ", matches.Select(champion => champion.Name))}");
+            }
+
+            if (_screenNavigationState.CurrentScreen is not ScreenKind.ChampionCatalog and not ScreenKind.ChampionDetail)
+            {
+                _championDetailBackScreen = _screenNavigationState.CurrentScreen;
+            }
+            else if (_screenNavigationState.CurrentScreen == ScreenKind.ChampionCatalog)
+            {
+                _championDetailBackScreen = ScreenKind.ChampionCatalog;
+            }
+
+            _selectedChampion = matches.Single();
+            _screenNavigationState.CurrentScreen = ScreenKind.ChampionDetail;
+            _currentScreenModel = BuildChampionDetailScreen(_world, _selectedChampion);
             return _screenRenderer.RenderToString(_currentScreenModel);
         }
+
+        private string FilterChampionRole()
+        {
+            string roleText = _command.Trim()[$"{ConsoleConstants.FilterRole} ".Length..].Trim();
+            if (!Enum.TryParse(roleText, ignoreCase: true, out ChampionRole role))
+            {
+                return RenderCurrentScreen($"Unknown role: {roleText}");
+            }
+
+            _championCatalogFilter = role;
+            return RenderChampionCatalog($"Filter applied: {role}");
+        }
+
+        private string ClearChampionFilter()
+        {
+            _championCatalogFilter = null;
+            return RenderChampionCatalog("Champion filter cleared.");
+        }
+
+        private string Back()
+        {
+            if (IsReviewScreen(_screenNavigationState.CurrentScreen))
+            {
+                _screenNavigationState.CurrentScreen = _reviewBackScreen;
+                return RenderCurrentScreen();
+            }
+
+            if (_screenNavigationState.CurrentScreen is not ScreenKind.ChampionCatalog and not ScreenKind.ChampionDetail)
+            {
+                return RenderCurrentScreen("No previous screen is available.");
+            }
+
+            if (_screenNavigationState.CurrentScreen == ScreenKind.ChampionDetail
+                && _championDetailBackScreen == ScreenKind.ChampionCatalog)
+            {
+                return RenderChampionCatalog();
+            }
+
+            _selectedChampion = null;
+            _screenNavigationState.CurrentScreen = _screenNavigationState.CurrentScreen == ScreenKind.ChampionCatalog
+                ? _championCatalogBackScreen
+                : _championDetailBackScreen;
+            return RenderCurrentScreen();
+        }
+
+        private string RenderChampionCatalog(string? message = null)
+        {
+            _selectedChampion = null;
+            _screenNavigationState.CurrentScreen = ScreenKind.ChampionCatalog;
+            _currentScreenModel = BuildChampionCatalogScreen(_world, _championCatalogFilter, message);
+            return _screenRenderer.RenderToString(_currentScreenModel);
+        }
+
+        private void SetReviewBackScreen(bool includeReviewScreen = false)
+        {
+            if (!IsReviewScreen(_screenNavigationState.CurrentScreen) || includeReviewScreen)
+            {
+                _reviewBackScreen = _screenNavigationState.CurrentScreen;
+            }
+        }
+
+        private static bool IsReviewScreen(ScreenKind screenKind) =>
+            screenKind is ScreenKind.LastMatchReview
+                or ScreenKind.RoundList
+                or ScreenKind.RoundReview
+                or ScreenKind.ReplayReview;
 
         private string RenderHome(string? message = null)
         {
@@ -767,7 +1073,25 @@ namespace ConsoleApp.Objects
         {
             if (_world is null)
             {
-                return BuildWelcomeScreen(message);
+                return _screenNavigationState.CurrentScreen switch
+                {
+                    ScreenKind.ChampionCatalog => BuildChampionCatalogScreen(null, _championCatalogFilter, message),
+                    ScreenKind.ChampionDetail when _selectedChampion is not null =>
+                        BuildChampionDetailScreen(null, _selectedChampion, message),
+                    ScreenKind.LastMatchReview when _matchReviewStore.LastMatch is not null =>
+                        BuildLastMatchReviewScreen(null, _matchReviewStore.LastMatch, message),
+                    ScreenKind.RoundList when _matchReviewStore.LastMatch is not null =>
+                        BuildRoundListScreen(null, _matchReviewStore.LastMatch, message),
+                    ScreenKind.RoundReview when _matchReviewStore.LastMatch is not null =>
+                        BuildRoundReviewScreen(
+                            null,
+                            _matchReviewStore.LastMatch,
+                            GetReviewRound(_matchReviewStore.LastMatch, _selectedReviewRoundNumber),
+                            message),
+                    ScreenKind.ReplayReview when _matchReviewStore.LastMatch is not null =>
+                        BuildReplayReviewScreen(null, _matchReviewStore.LastMatch, _replayReviewState, message),
+                    _ => BuildWelcomeScreen(message)
+                };
             }
 
             Team humanTeam = GetHumanTeam(_world);
@@ -777,6 +1101,21 @@ namespace ConsoleApp.Objects
                 ScreenKind.Team => BuildTeamScreen(_world, humanTeam, league, message),
                 ScreenKind.League => BuildLeagueScreen(_world, humanTeam, league, message),
                 ScreenKind.Schedule => BuildScheduleScreen(_world, humanTeam, league, message),
+                ScreenKind.ChampionCatalog => BuildChampionCatalogScreen(_world, _championCatalogFilter, message),
+                ScreenKind.ChampionDetail when _selectedChampion is not null =>
+                    BuildChampionDetailScreen(_world, _selectedChampion, message),
+                ScreenKind.LastMatchReview when _matchReviewStore.LastMatch is not null =>
+                    BuildLastMatchReviewScreen(_world, _matchReviewStore.LastMatch, message),
+                ScreenKind.RoundList when _matchReviewStore.LastMatch is not null =>
+                    BuildRoundListScreen(_world, _matchReviewStore.LastMatch, message),
+                ScreenKind.RoundReview when _matchReviewStore.LastMatch is not null =>
+                    BuildRoundReviewScreen(
+                        _world,
+                        _matchReviewStore.LastMatch,
+                        GetReviewRound(_matchReviewStore.LastMatch, _selectedReviewRoundNumber),
+                        message),
+                ScreenKind.ReplayReview when _matchReviewStore.LastMatch is not null =>
+                    BuildReplayReviewScreen(_world, _matchReviewStore.LastMatch, _replayReviewState, message),
                 ScreenKind.MatchPreview when _pendingMatch is not null =>
                     BuildMatchPreviewScreen(_world, humanTeam, league, _pendingMatch, message),
                 ScreenKind.Draft when _matchPresentationState.ScheduledMatch is not null
@@ -844,7 +1183,11 @@ namespace ConsoleApp.Objects
                     ConsoleConstants.ShowTeam,
                     ConsoleConstants.ShowLeague,
                     ConsoleConstants.ShowSchedule,
+                    ConsoleConstants.ShowChampions,
                     ConsoleConstants.StartMatch,
+                    ConsoleConstants.ViewLastMatch,
+                    ConsoleConstants.ViewReplay,
+                    ConsoleConstants.ViewRounds,
                     ConsoleConstants.Help
                 ],
                 ContentLines =
@@ -903,6 +1246,7 @@ namespace ConsoleApp.Objects
                     ConsoleConstants.Home,
                     ConsoleConstants.ShowLeague,
                     ConsoleConstants.ShowSchedule,
+                    ConsoleConstants.ShowChampions,
                     ConsoleConstants.StartMatch,
                     ConsoleConstants.Help
                 ],
@@ -944,6 +1288,7 @@ namespace ConsoleApp.Objects
                     ConsoleConstants.Home,
                     ConsoleConstants.ShowTeam,
                     ConsoleConstants.ShowSchedule,
+                    ConsoleConstants.ShowChampions,
                     ConsoleConstants.Help
                 ],
                 ContentLines = lines,
@@ -992,6 +1337,7 @@ namespace ConsoleApp.Objects
                     ConsoleConstants.StartMatch,
                     ConsoleConstants.ShowTeam,
                     ConsoleConstants.ShowLeague,
+                    ConsoleConstants.ShowChampions,
                     ConsoleConstants.Help
                 ],
                 ContentLines = lines,
@@ -1021,6 +1367,7 @@ namespace ConsoleApp.Objects
                     ConsoleConstants.Cancel,
                     ConsoleConstants.ShowTeam,
                     ConsoleConstants.ShowOpponent,
+                    ConsoleConstants.ShowChampions,
                     ConsoleConstants.Help
                 ],
                 ContentLines =
@@ -1170,6 +1517,7 @@ namespace ConsoleApp.Objects
                     ConsoleConstants.Faster,
                     ConsoleConstants.Slower,
                     ConsoleConstants.Details,
+                    ConsoleConstants.ShowChampions,
                     ConsoleConstants.QuitReplay,
                     ConsoleConstants.Help
                 ],
@@ -1199,8 +1547,12 @@ namespace ConsoleApp.Objects
                 [
                     ConsoleConstants.NextRound,
                     ConsoleConstants.ViewReplay,
+                    "view round <number>",
+                    ConsoleConstants.PreviousRound,
                     ConsoleConstants.Continue,
                     ConsoleConstants.MatchSummary,
+                    ConsoleConstants.Home,
+                    ConsoleConstants.Back,
                     ConsoleConstants.Help
                 ],
                 ContentLines =
@@ -1238,9 +1590,12 @@ namespace ConsoleApp.Objects
                 Commands =
                 [
                     ConsoleConstants.Continue,
+                    ConsoleConstants.ViewReplay,
                     ConsoleConstants.ViewRounds,
+                    "view round <number>",
                     ConsoleConstants.ShowLeague,
                     ConsoleConstants.ShowTeam,
+                    ConsoleConstants.ShowChampions,
                     ConsoleConstants.Home,
                     ConsoleConstants.Help
                 ],
@@ -1263,6 +1618,266 @@ namespace ConsoleApp.Objects
                 Header = BuildHeader(world, humanTeam, league),
                 Message = message,
                 Title = "Match Summary"
+            };
+        }
+
+        private static ScreenRenderModel BuildChampionCatalogScreen(
+            WorldState? world,
+            ChampionRole? roleFilter,
+            string? message = null)
+        {
+            IReadOnlyList<ChampionDefinition> champions = GetOrderedChampions()
+                .Where(champion => roleFilter is null || champion.Role == roleFilter)
+                .ToList();
+            List<string> lines =
+            [
+                roleFilter is null ? "All champions" : $"Filtered role: {roleFilter}",
+                "Champion          Role      HP   AP   Pwr  Speed  CD    Description"
+            ];
+            lines.AddRange(champions.Select(FormatChampionCatalogRow));
+
+            return new ScreenRenderModel
+            {
+                Commands =
+                [
+                    ConsoleConstants.Home,
+                    ConsoleConstants.Back,
+                    "show champion <name>",
+                    "filter role <role>",
+                    ConsoleConstants.ClearFilter,
+                    ConsoleConstants.Help
+                ],
+                ContentLines = lines,
+                Header = BuildChampionHeader(world),
+                Message = message,
+                Title = "Champion Catalog"
+            };
+        }
+
+        private static ScreenRenderModel BuildChampionDetailScreen(
+            WorldState? world,
+            ChampionDefinition champion,
+            string? message = null)
+        {
+            List<string> lines =
+            [
+                champion.Name,
+                string.Empty,
+                $"Role: {champion.Role}",
+                $"Description: {champion.Description}",
+                string.Empty,
+                "Stats",
+                $"Health: {champion.Health}",
+                $"Attack Power: {champion.AttackPower}",
+                $"Ability Power: {GetAbilityPower(champion)}",
+                $"Action Speed: {champion.AttackSpeed:0.##} attacks/sec",
+                string.Empty,
+                "Ability",
+                $"Name: {champion.Ability.Name}",
+                $"Cooldown: {champion.Ability.Cooldown:0.##}s",
+                $"Cast Time: {champion.Ability.CastTime:0.##}s"
+            ];
+
+            AbilityEffect? firstEffect = champion.Ability.Effects.FirstOrDefault();
+            if (firstEffect is not null)
+            {
+                lines.Add($"Target Mode: {firstEffect.TargetMode}");
+                lines.Add($"Target Scope: {firstEffect.TargetScope}");
+            }
+
+            lines.Add(string.Empty);
+            lines.Add("Effects");
+            lines.AddRange(champion.Ability.Effects.Select(FormatAbilityEffect));
+            lines.Add(string.Empty);
+            lines.Add("Basic Attack");
+            lines.AddRange(champion.Attack.Effects.Select(FormatAttackEffect));
+
+            return new ScreenRenderModel
+            {
+                Commands =
+                [
+                    ConsoleConstants.Back,
+                    ConsoleConstants.ShowChampions,
+                    "show champion <name>",
+                    ConsoleConstants.Help
+                ],
+                ContentLines = lines,
+                Header = BuildChampionHeader(world),
+                Message = message,
+                Title = "Champion Detail"
+            };
+        }
+
+        private static ScreenRenderModel BuildLastMatchReviewScreen(
+            WorldState? world,
+            MatchReview match,
+            string? message = null)
+        {
+            List<string> lines =
+            [
+                $"Week {match.WeekNumber} | {match.MatchType} | {match.BestOfLabel}",
+                string.Empty,
+                $"{match.WinnerTeamName} defeated {GetLosingTeamName(match)} {match.BlueRoundWins}-{match.RedRoundWins}",
+                string.Empty,
+                "Round Results",
+                "Round   Winner                    Score"
+            ];
+            lines.AddRange(match.Rounds.Select(round =>
+                $"{round.RoundNumber,-7} {round.WinnerTeamName,-25} {round.BlueScore}-{round.RedScore}"));
+            lines.Add(string.Empty);
+            lines.Add("Key Moments");
+            lines.AddRange(GetMatchKeyMoments(match).DefaultIfEmpty("No key moments are available yet."));
+
+            return new ScreenRenderModel
+            {
+                Commands =
+                [
+                    ConsoleConstants.ViewReplay,
+                    ConsoleConstants.ViewRounds,
+                    "view round <number>",
+                    ConsoleConstants.Home,
+                    ConsoleConstants.ShowLeague,
+                    ConsoleConstants.ShowTeam,
+                    ConsoleConstants.Help
+                ],
+                ContentLines = lines,
+                Header = BuildChampionHeader(world),
+                Message = message,
+                Title = "Last Match Review"
+            };
+        }
+
+        private static ScreenRenderModel BuildRoundListScreen(
+            WorldState? world,
+            MatchReview match,
+            string? message = null)
+        {
+            List<string> lines =
+            [
+                $"{match.BlueTeamName} vs {match.RedTeamName}",
+                "Round   Winner                    Score   Duration   Note"
+            ];
+            lines.AddRange(match.Rounds.Select(round =>
+                $"{round.RoundNumber,-7} {round.WinnerTeamName,-25} {round.BlueScore}-{round.RedScore}     "
+                + $"{FormatTimestamp(round.Duration),-8} {round.KeyMoments.FirstOrDefault() ?? "No key moment."}"));
+
+            return new ScreenRenderModel
+            {
+                Commands =
+                [
+                    "view round <number>",
+                    ConsoleConstants.MatchSummary,
+                    ConsoleConstants.Home,
+                    ConsoleConstants.Back,
+                    ConsoleConstants.Help
+                ],
+                ContentLines = lines,
+                Header = BuildChampionHeader(world),
+                Message = message,
+                Title = "Round List"
+            };
+        }
+
+        private static ScreenRenderModel BuildRoundReviewScreen(
+            WorldState? world,
+            MatchReview match,
+            RoundReview round,
+            string? message = null)
+        {
+            List<string> lines =
+            [
+                $"{match.BlueTeamName} vs {match.RedTeamName}",
+                $"Round {round.RoundNumber}",
+                $"Winner: {round.WinnerTeamName}",
+                $"Final score: {round.BlueScore}-{round.RedScore}",
+                $"Duration: {FormatTimestamp(round.Duration)}",
+                $"Blue team score: {round.BlueScore}",
+                $"Red team score: {round.RedScore}",
+                string.Empty,
+                "Champion Stats"
+            ];
+
+            if (round.ChampionStats.Count == 0)
+            {
+                lines.Add("Champion stats are not available for this round yet.");
+            }
+            else
+            {
+                lines.Add("Champion              Team        K  D  Dmg  Heal  Shield");
+                lines.AddRange(round.ChampionStats.Select(stat =>
+                    $"{stat.ChampionName,-21} {stat.TeamName,-10} {stat.Kills,1}  {stat.Deaths,1}  "
+                    + $"{stat.DamageDealt,3}  {stat.HealingDone,4}  {stat.ShieldingDone,6}"));
+            }
+
+            lines.Add(string.Empty);
+            lines.Add("Key Moments");
+            lines.AddRange(round.KeyMoments.Take(8).DefaultIfEmpty("No key moments are available yet."));
+            lines.Add(string.Empty);
+            lines.Add("Replay Preview");
+            lines.AddRange(round.ReplayMessages.Take(6).Select(FormatReplayMessage));
+
+            return new ScreenRenderModel
+            {
+                Commands =
+                [
+                    ConsoleConstants.ViewReplay,
+                    ConsoleConstants.NextRound,
+                    ConsoleConstants.PreviousRound,
+                    ConsoleConstants.MatchSummary,
+                    ConsoleConstants.Home,
+                    ConsoleConstants.Back,
+                    ConsoleConstants.Help
+                ],
+                ContentLines = lines,
+                Header = BuildChampionHeader(world),
+                Message = message,
+                Title = "Round Review"
+            };
+        }
+
+        private static ScreenRenderModel BuildReplayReviewScreen(
+            WorldState? world,
+            MatchReview match,
+            ReplayReviewState replayState,
+            string? message = null)
+        {
+            IReadOnlyList<ReplayMessage> messages = GetReplayReviewMessages(match, replayState);
+            int pageCount = Math.Max(1, GetReplayReviewPageCount(match, replayState));
+            int pageIndex = Math.Min(replayState.PageIndex, pageCount - 1);
+            IReadOnlyList<string> replayLines = messages
+                .Skip(pageIndex * replayState.PageSize)
+                .Take(replayState.PageSize)
+                .Select(FormatReplayMessage)
+                .ToList();
+
+            string roundLabel = replayState.RoundNumber.HasValue
+                ? $"Round {replayState.RoundNumber.Value}"
+                : "Match Replay";
+
+            return new ScreenRenderModel
+            {
+                Commands =
+                [
+                    ConsoleConstants.NextPage,
+                    ConsoleConstants.PreviousPage,
+                    "view round <number>",
+                    ConsoleConstants.MatchSummary,
+                    ConsoleConstants.Home,
+                    ConsoleConstants.Back,
+                    ConsoleConstants.Help
+                ],
+                ContentLines =
+                [
+                    $"{match.BlueTeamName} vs {match.RedTeamName}",
+                    roundLabel,
+                    $"Page {pageIndex + 1} of {pageCount}",
+                    string.Empty,
+                    "Replay Messages",
+                    .. replayLines.DefaultIfEmpty("No replay messages are available.")
+                ],
+                Header = BuildChampionHeader(world),
+                Message = message,
+                Title = "Replay Review"
             };
         }
 
@@ -1440,6 +2055,22 @@ namespace ConsoleApp.Objects
             };
         }
 
+        private static ScreenHeaderModel BuildChampionHeader(WorldState? world)
+        {
+            if (world is null)
+            {
+                return new ScreenHeaderModel
+                {
+                    PrimaryLeft = "AutoSim",
+                    PrimaryRight = "Champion Reference"
+                };
+            }
+
+            Team humanTeam = GetHumanTeam(world);
+            League league = GetTeamLeague(world, humanTeam);
+            return BuildHeader(world, humanTeam, league);
+        }
+
         private static Division GetDivision(League league, Team team) =>
             league.Divisions.First(division => string.Equals(division.Id, team.DivisionId, StringComparison.Ordinal));
 
@@ -1496,6 +2127,28 @@ namespace ConsoleApp.Objects
                 .OrderBy(player => player.PositionRole)
                 .ThenBy(player => player.Name, StringComparer.Ordinal)
                 .ToList();
+
+        private static IReadOnlyList<ChampionDefinition> GetOrderedChampions() =>
+            ChampionCatalog.GetDefaultChampions()
+                .OrderBy(champion => champion.Role)
+                .ThenBy(champion => champion.Name, StringComparer.Ordinal)
+                .ToList();
+
+        private static IReadOnlyList<ChampionDefinition> FindChampionMatches(string query)
+        {
+            IReadOnlyList<ChampionDefinition> champions = GetOrderedChampions();
+            List<ChampionDefinition> exactMatches = champions
+                .Where(champion => string.Equals(champion.Name, query, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            if (exactMatches.Count > 0)
+            {
+                return exactMatches;
+            }
+
+            return champions
+                .Where(champion => champion.Name.Contains(query, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+        }
 
         private static int CreateRoundSeed(int matchSeed, int roundNumber) =>
             unchecked((matchSeed * 397) ^ roundNumber);
@@ -1593,6 +2246,27 @@ namespace ConsoleApp.Objects
                 .ToList();
         }
 
+        private static string FormatChampionCatalogRow(ChampionDefinition champion) =>
+            $"{champion.Name,-17} {champion.Role,-9} {champion.Health,3}  {champion.AttackPower,3}  "
+            + $"{GetAbilityPower(champion),3}  {champion.AttackSpeed,5:0.##}  {champion.Ability.Cooldown,4:0.#}  "
+            + champion.Description;
+
+        private static int GetAbilityPower(ChampionDefinition champion) =>
+            champion.Ability.Effects.Sum(effect => effect.AbilityPower);
+
+        private static string FormatAbilityEffect(AbilityEffect effect)
+        {
+            string amount = effect.AbilityPower > 0 ? $": {effect.AbilityPower}" : string.Empty;
+            string duration = effect.Duration.HasValue ? $" for {effect.Duration.Value:0.##}s" : string.Empty;
+            return $"{effect.Type}{amount} | Target: {effect.TargetMode} | Scope: {effect.TargetScope}{duration}";
+        }
+
+        private static string FormatAttackEffect(AttackEffect effect)
+        {
+            string duration = effect.Duration.HasValue ? $" for {effect.Duration.Value:0.##}s" : string.Empty;
+            return $"{effect.Type} | Target: {effect.TargetMode} | Scope: {effect.TargetScope}{duration}";
+        }
+
         private static IReadOnlyList<string> FormatChampionState(
             WorldState world,
             MatchResult match,
@@ -1642,6 +2316,42 @@ namespace ConsoleApp.Objects
 
         private static string FormatTimestamp(TimeSpan timestamp) =>
             $"{(int)timestamp.TotalMinutes:00}:{timestamp.Seconds:00}";
+
+        private static RoundReview GetReviewRound(MatchReview matchReview, int roundNumber) =>
+            matchReview.Rounds.FirstOrDefault(round => round.RoundNumber == roundNumber)
+            ?? matchReview.Rounds.First();
+
+        private static IReadOnlyList<string> GetMatchKeyMoments(MatchReview match) =>
+            match.Rounds
+                .SelectMany(round => round.KeyMoments.Select(moment => $"R{round.RoundNumber} {moment}"))
+                .Take(6)
+                .ToList();
+
+        private static string GetLosingTeamName(MatchReview match) =>
+            string.Equals(match.WinnerTeamName, match.BlueTeamName, StringComparison.Ordinal)
+                ? match.RedTeamName
+                : match.BlueTeamName;
+
+        private static IReadOnlyList<ReplayMessage> GetReplayReviewMessages(
+            MatchReview match,
+            ReplayReviewState replayState)
+        {
+            if (replayState.RoundNumber is null)
+            {
+                return match.MatchMessages;
+            }
+
+            return match.Rounds
+                .FirstOrDefault(round => round.RoundNumber == replayState.RoundNumber.Value)
+                ?.ReplayMessages
+                ?? [];
+        }
+
+        private static int GetReplayReviewPageCount(MatchReview match, ReplayReviewState replayState)
+        {
+            int messageCount = GetReplayReviewMessages(match, replayState).Count;
+            return (int)Math.Ceiling(messageCount / (double)replayState.PageSize);
+        }
 
         private static string RenderMatchResult(WorldState world, MatchResult result)
         {

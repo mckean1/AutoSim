@@ -11,15 +11,21 @@ namespace ConsoleApp.Constants
         internal const string Continue = "continue";
         internal const string Cancel = "cancel";
         internal const string AutoDraft = "auto draft";
+        internal const string Back = "back";
+        internal const string ClearFilter = "clear filter";
         internal const string Details = "details";
+        internal const string FilterRole = "filter role";
         internal const string Exit = "exit";
         internal const string Faster = "faster";
         internal const string Help = "help";
         internal const string Home = "home";
         internal const string MatchSummary = "match summary";
         internal const string NextRound = "next round";
+        internal const string NextPage = "next page";
         internal const string Pause = "pause";
         internal const string Play = "play";
+        internal const string PreviousPage = "previous page";
+        internal const string PreviousRound = "previous round";
         internal const string QuitReplay = "quit replay";
         internal const string ShowLeague = "show league";
         internal const string ShowChampions = "show champions";
@@ -30,6 +36,7 @@ namespace ConsoleApp.Constants
         internal const string Slower = "slower";
         internal const string Step = "step";
         internal const string ViewReplay = "view replay";
+        internal const string ViewLastMatch = "view last match";
         internal const string ViewRounds = "view rounds";
     }
 }

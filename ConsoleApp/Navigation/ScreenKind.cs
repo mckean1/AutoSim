@@ -53,6 +53,36 @@ namespace ConsoleApp.Navigation
         /// <summary>
         /// The match summary screen.
         /// </summary>
-        MatchSummary
+        MatchSummary,
+
+        /// <summary>
+        /// The champion catalog screen.
+        /// </summary>
+        ChampionCatalog,
+
+        /// <summary>
+        /// The champion detail screen.
+        /// </summary>
+        ChampionDetail,
+
+        /// <summary>
+        /// The last match review screen.
+        /// </summary>
+        LastMatchReview,
+
+        /// <summary>
+        /// The round list review screen.
+        /// </summary>
+        RoundList,
+
+        /// <summary>
+        /// The detailed round review screen.
+        /// </summary>
+        RoundReview,
+
+        /// <summary>
+        /// The paged replay review screen.
+        /// </summary>
+        ReplayReview
     }
 }

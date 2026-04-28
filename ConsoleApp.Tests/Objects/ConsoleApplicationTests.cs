@@ -171,7 +171,7 @@ namespace ConsoleApp.Tests.Objects
                 Assert.That(leagueOutput, Does.Contain("Standings"));
                 Assert.That(scheduleOutput, Does.Contain("Scheduled matches"));
                 Assert.That(matchOutput, Does.Contain("Match Preview"));
-                Assert.That(matchOutput, Does.Contain("Commands: continue | cancel | show team | show opponent | help"));
+                Assert.That(matchOutput, Does.Contain("show champions"));
             });
         }
 
@@ -297,6 +297,123 @@ namespace ConsoleApp.Tests.Objects
         }
 
         [Test]
+        public void ExecuteCommand_ViewLastMatchWithoutCompletedMatch_ShowsHelpfulMessage()
+        {
+            string directory = CreateTempDirectory();
+            ConsoleApplication application = new(directory, () => 123);
+            application.ExecuteCommand("start");
+
+            string output = application.ExecuteCommand("view last match");
+
+            Assert.That(output, Does.Contain("No completed match is available yet."));
+        }
+
+        [Test]
+        public void ExecuteCommand_ViewLastMatchAfterCompletedMatch_RendersReview()
+        {
+            ConsoleApplication application = CreateApplicationWithCompletedMatch();
+            application.ExecuteCommand("home");
+
+            string output = application.ExecuteCommand("view last match");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(output, Does.Contain("Last Match Review"));
+                Assert.That(output, Does.Contain("Round Results"));
+                Assert.That(output, Does.Contain("Key Moments"));
+            });
+        }
+
+        [Test]
+        public void ExecuteCommand_ViewRoundsAfterCompletedMatch_RendersRoundList()
+        {
+            ConsoleApplication application = CreateApplicationWithCompletedMatch();
+            application.ExecuteCommand("home");
+
+            string output = application.ExecuteCommand("view rounds");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(output, Does.Contain("Round List"));
+                Assert.That(output, Does.Contain("Round"));
+                Assert.That(output, Does.Contain("Winner"));
+            });
+        }
+
+        [Test]
+        public void ExecuteCommand_ViewRoundAfterCompletedMatch_RendersRoundReview()
+        {
+            ConsoleApplication application = CreateApplicationWithCompletedMatch();
+            application.ExecuteCommand("home");
+
+            string output = application.ExecuteCommand("view round 1");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(output, Does.Contain("Round Review"));
+                Assert.That(output, Does.Contain("Champion stats are not available for this round yet."));
+                Assert.That(output, Does.Contain("Replay Preview"));
+            });
+        }
+
+        [Test]
+        public void ExecuteCommand_ViewRoundInvalid_ShowsHelpfulMessage()
+        {
+            ConsoleApplication application = CreateApplicationWithCompletedMatch();
+            application.ExecuteCommand("view last match");
+
+            string output = application.ExecuteCommand("view round 99");
+
+            Assert.That(output, Does.Contain("Round 99 is not available."));
+        }
+
+        [Test]
+        public void ExecuteCommand_ViewReplayAfterCompletedMatch_RendersPagedReplayReview()
+        {
+            ConsoleApplication application = CreateApplicationWithCompletedMatch();
+            application.ExecuteCommand("home");
+
+            string output = application.ExecuteCommand("view replay");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(output, Does.Contain("Replay Review"));
+                Assert.That(output, Does.Contain("Page 1 of"));
+                Assert.That(output, Does.Contain("Replay Messages"));
+                Assert.That(output, Does.Not.Contain("ChampionInstance"));
+            });
+        }
+
+        [Test]
+        public void ExecuteCommand_ReplayReviewPaging_RerendersReplayReview()
+        {
+            ConsoleApplication application = CreateApplicationWithCompletedMatch();
+            application.ExecuteCommand("view replay");
+
+            string nextPage = application.ExecuteCommand("next page");
+            string previousPage = application.ExecuteCommand("previous page");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(nextPage, Does.Contain("Replay Review"));
+                Assert.That(previousPage, Does.Contain("Replay Review"));
+                Assert.That(previousPage, Does.Contain("Page 1 of"));
+            });
+        }
+
+        [Test]
+        public void ExecuteCommand_BackFromReplayReview_ReturnsPreviousReviewScreen()
+        {
+            ConsoleApplication application = CreateApplicationWithCompletedMatch();
+            application.ExecuteCommand("view round 1");
+            application.ExecuteCommand("view replay");
+
+            string output = application.ExecuteCommand("back");
+
+            Assert.That(output, Does.Contain("Round Review"));
+        }
+
+        [Test]
         public void ExecuteCommand_HomeAfterShowingTeam_RendersHomeScreen()
         {
             string directory = CreateTempDirectory();
@@ -312,6 +429,160 @@ namespace ConsoleApp.Tests.Objects
                 Assert.That(output, Does.Contain("Next match:"));
                 Assert.That(output, Does.Contain("Recommended action:"));
             });
+        }
+
+        [Test]
+        public void ExecuteCommand_ShowChampions_RendersChampionCatalog()
+        {
+            string directory = CreateTempDirectory();
+            ConsoleApplication application = new(directory, () => 123);
+            application.ExecuteCommand("start");
+
+            string output = application.ExecuteCommand("show champions");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(output, Does.Contain("Champion Catalog"));
+                Assert.That(output, Does.Contain("Champion"));
+                Assert.That(output, Does.Contain("Quickshot"));
+                Assert.That(output, Does.Contain("Commands: home | back | show champion <name>"));
+            });
+        }
+
+        [Test]
+        public void ExecuteCommand_ShowChampionCaseInsensitive_RendersChampionDetail()
+        {
+            string directory = CreateTempDirectory();
+            ConsoleApplication application = new(directory, () => 123);
+
+            string output = application.ExecuteCommand("show champion quickshot");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(output, Does.Contain("Champion Detail"));
+                Assert.That(output, Does.Contain("Quickshot"));
+                Assert.That(output, Does.Contain("Role: Marksman"));
+                Assert.That(output, Does.Contain("Ability"));
+            });
+        }
+
+        [Test]
+        public void ExecuteCommand_ShowChampionPartialMatch_RendersChampionDetail()
+        {
+            string directory = CreateTempDirectory();
+            ConsoleApplication application = new(directory, () => 123);
+
+            string output = application.ExecuteCommand("show champion quick");
+
+            Assert.That(output, Does.Contain("Quickshot"));
+        }
+
+        [Test]
+        public void ExecuteCommand_ShowChampionAmbiguousMatch_ShowsHelpfulMessage()
+        {
+            string directory = CreateTempDirectory();
+            ConsoleApplication application = new(directory, () => 123);
+            application.ExecuteCommand("show champions");
+
+            string output = application.ExecuteCommand("show champion shot");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(output, Does.Contain("Multiple champions match:"));
+                Assert.That(output, Does.Contain("Longshot"));
+                Assert.That(output, Does.Contain("Quickshot"));
+            });
+        }
+
+        [Test]
+        public void ExecuteCommand_ShowChampionInvalidMatch_ShowsHelpfulMessage()
+        {
+            string directory = CreateTempDirectory();
+            ConsoleApplication application = new(directory, () => 123);
+            application.ExecuteCommand("show champions");
+
+            string output = application.ExecuteCommand("show champion nope");
+
+            Assert.That(output, Does.Contain("No champion found matching: nope"));
+        }
+
+        [Test]
+        public void ExecuteCommand_FilterRole_UpdatesChampionCatalog()
+        {
+            string directory = CreateTempDirectory();
+            ConsoleApplication application = new(directory, () => 123);
+            application.ExecuteCommand("show champions");
+
+            string output = application.ExecuteCommand("filter role mage");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(output, Does.Contain("Filtered role: Mage"));
+                Assert.That(output, Does.Contain("Ember Sage"));
+                Assert.That(output, Does.Not.Contain("Quickshot"));
+            });
+        }
+
+        [Test]
+        public void ExecuteCommand_ClearFilter_ReturnsChampionCatalogToAllChampions()
+        {
+            string directory = CreateTempDirectory();
+            ConsoleApplication application = new(directory, () => 123);
+            application.ExecuteCommand("show champions");
+            application.ExecuteCommand("filter role support");
+
+            string output = application.ExecuteCommand("clear filter");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(output, Does.Contain("All champions"));
+                Assert.That(output, Does.Contain("Quickshot"));
+                Assert.That(output, Does.Contain("Lifewarden"));
+            });
+        }
+
+        [Test]
+        public void ExecuteCommand_FilterRoleInvalid_ShowsHelpfulMessage()
+        {
+            string directory = CreateTempDirectory();
+            ConsoleApplication application = new(directory, () => 123);
+            application.ExecuteCommand("show champions");
+
+            string output = application.ExecuteCommand("filter role assassin");
+
+            Assert.That(output, Does.Contain("Unknown role: assassin"));
+        }
+
+        [Test]
+        public void ExecuteCommand_BackFromChampionDetailOpenedFromCatalog_ReturnsCatalog()
+        {
+            string directory = CreateTempDirectory();
+            ConsoleApplication application = new(directory, () => 123);
+            application.ExecuteCommand("show champions");
+            application.ExecuteCommand("show champion quickshot");
+
+            string output = application.ExecuteCommand("back");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(output, Does.Contain("Champion Catalog"));
+                Assert.That(output, Does.Contain("Quickshot"));
+            });
+        }
+
+        [Test]
+        public void ExecuteCommand_BackFromChampionDetailOpenedFromDraft_ReturnsDraft()
+        {
+            string directory = CreateTempDirectory();
+            ConsoleApplication application = new(directory, () => 123, new CountingMatchEngineWrapper());
+            application.ExecuteCommand("start");
+            application.ExecuteCommand("start match");
+            application.ExecuteCommand("continue");
+            application.ExecuteCommand("show champion quickshot");
+
+            string output = application.ExecuteCommand("back");
+
+            Assert.That(output, Does.Contain("Draft"));
         }
 
         [Test]
@@ -431,6 +702,20 @@ namespace ConsoleApp.Tests.Objects
             string directory = Path.Combine(Path.GetTempPath(), $"autosim-rounds-{Guid.NewGuid():N}");
             Directory.CreateDirectory(directory);
             return directory;
+        }
+
+        private static ConsoleApplication CreateApplicationWithCompletedMatch()
+        {
+            string directory = CreateTempDirectory();
+            ConsoleApplication application = new(directory, () => 123, new CountingMatchEngineWrapper());
+            application.ExecuteCommand("start");
+            application.ExecuteCommand("start match");
+            application.ExecuteCommand("continue");
+            application.ExecuteCommand("auto draft");
+            application.ExecuteCommand("continue");
+            application.ExecuteCommand("skip");
+            application.ExecuteCommand("match summary");
+            return application;
         }
 
         private sealed class CountingMatchEngineWrapper : IMatchEngineWrapper
