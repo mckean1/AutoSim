@@ -4,6 +4,8 @@ using AutoSim.Domain.Management.Models;
 using AutoSim.Domain.Management.Services;
 using AutoSim.Domain.Objects;
 using ConsoleApp.Constants;
+using ConsoleApp.Navigation;
+using ConsoleApp.Screens;
 using ConsoleApp.Services;
 
 namespace ConsoleApp.Objects
@@ -30,9 +32,13 @@ namespace ConsoleApp.Objects
         private readonly RoundLogReader _roundLogReader;
         private readonly RoundLogWriter _roundLogWriter;
         private readonly RoundReportWriter _roundReportWriter;
+        private readonly ScreenNavigationState _screenNavigationState;
+        private readonly ConsoleScreenRenderer _screenRenderer;
         private readonly SeasonProgressionService _seasonProgressionService;
         private readonly Func<int> _seedProvider;
         private readonly WorldGenerationService _worldGenerationService;
+        private ScheduledMatch? _pendingMatch;
+        private ScreenRenderModel _currentScreenModel;
         private WorldState? _world;
 
         /// <summary>
@@ -54,9 +60,12 @@ namespace ConsoleApp.Objects
             _roundLogReader = new RoundLogReader();
             _roundLogWriter = new RoundLogWriter(logDirectory);
             _roundReportWriter = new RoundReportWriter(logDirectory);
+            _screenNavigationState = new ScreenNavigationState();
+            _screenRenderer = new ConsoleScreenRenderer();
             _seasonProgressionService = new SeasonProgressionService(matchEngineWrapper);
             _seedProvider = seedProvider ?? (() => Environment.TickCount);
             _worldGenerationService = new WorldGenerationService();
+            _currentScreenModel = BuildWelcomeScreen();
         }
 
         /// <summary>
@@ -64,6 +73,8 @@ namespace ConsoleApp.Objects
         /// </summary>
         public void Run()
         {
+            _screenRenderer.Render(_currentScreenModel);
+
             while (true)
             {
                 RenderPrompt();
@@ -90,7 +101,6 @@ namespace ConsoleApp.Objects
         /// </summary>
         private void ProcessCommand()
         {
-            Console.SetCursorPosition(0, 1);
             _isProcessingCommand = true;
 
             try
@@ -102,18 +112,13 @@ namespace ConsoleApp.Objects
 
                 if (IsExitCommand())
                 {
-                    Console.WriteLine("Exiting the application.");
+                    _currentScreenModel = BuildCurrentScreen("Exiting the application.");
+                    _screenRenderer.Render(_currentScreenModel);
                     Environment.Exit(0);
                 }
 
-                if (IsStartGameCommand())
-                {
-                    Console.Write(StartGame(ReadOptionalValue("Coach Name"), ReadOptionalValue("Team Name")));
-                }
-                else
-                {
-                    Console.Write(ExecuteCommand(_command));
-                }
+                ExecuteCommand(_command);
+                _screenRenderer.Render(_currentScreenModel);
 
                 _previousCommand = _command;
             }
@@ -133,15 +138,32 @@ namespace ConsoleApp.Objects
         public string ExecuteCommand(string command)
         {
             _command = command ?? string.Empty;
+            string normalizedCommand = _command.Trim();
 
             if (IsStartGameCommand())
             {
                 return StartGame();
             }
 
+            if (IsHomeCommand())
+            {
+                return RenderHome();
+            }
+
             if (IsStartMatchCommand())
             {
-                return StartMatch();
+                return RenderMatchPreview();
+            }
+
+            if (IsContinueCommand())
+            {
+                return ContinueMatch();
+            }
+
+            if (IsCancelCommand())
+            {
+                _pendingMatch = null;
+                return RenderHome("Match preview cancelled.");
             }
 
             if (IsShowTeamCommand())
@@ -152,6 +174,16 @@ namespace ConsoleApp.Objects
             if (IsShowLeagueCommand())
             {
                 return ShowLeague();
+            }
+
+            if (IsShowScheduleCommand())
+            {
+                return ShowSchedule();
+            }
+
+            if (IsShowOpponentCommand())
+            {
+                return ShowOpponent();
             }
 
             if (IsSimulateRoundsCommand())
@@ -171,18 +203,10 @@ namespace ConsoleApp.Objects
 
             if (IsHelpCommand())
             {
-                return "  start - Starts a new game." + Environment.NewLine
-                    + "  show team - Shows your coach, team, league, division, and players." + Environment.NewLine
-                    + "  show league - Shows your current league, divisions, teams, and standings." + Environment.NewLine
-                    + "  start match - Resolves the current week of scheduled matches." + Environment.NewLine
-                    + "  simulate rounds <number> - Simulates many rounds." + Environment.NewLine
-                    + "  analyze round <log path> - Analyzes a saved round log." + Environment.NewLine
-                    + "  analyze rounds - Analyzes all saved round logs." + Environment.NewLine
-                    + "  exit  - Exits AutoSim." + Environment.NewLine;
+                return RenderHelp();
             }
 
-            return $"Unknown command: {command}" + Environment.NewLine
-                + "Type help for available commands." + Environment.NewLine;
+            return RenderCurrentScreen($"Unknown command: {normalizedCommand}");
         }
 
         private void HandleBackspace()
@@ -216,18 +240,27 @@ namespace ConsoleApp.Objects
         /// </summary>
         private void RenderPrompt()
         {
-            Console.SetCursorPosition(0, 0);
-            Console.Write(new string(' ', Console.BufferWidth - 1));
-            Console.SetCursorPosition(0, 0);
-            Console.Write($"{ConsoleConstants.Prompt}{_command}");
+            _screenRenderer.Render(_currentScreenModel, _command);
         }
 
         private bool IsStartGameCommand() =>
             string.Equals(_command.Trim(), ConsoleConstants.Start, StringComparison.OrdinalIgnoreCase);
         private bool IsStartMatchCommand() =>
             string.Equals(_command.Trim(), ConsoleConstants.StartMatch, StringComparison.OrdinalIgnoreCase);
-        private bool IsShowLeagueCommand() => string.Equals(_command, "show league", StringComparison.OrdinalIgnoreCase);
-        private bool IsShowTeamCommand() => string.Equals(_command, "show team", StringComparison.OrdinalIgnoreCase);
+        private bool IsCancelCommand() =>
+            string.Equals(_command.Trim(), ConsoleConstants.Cancel, StringComparison.OrdinalIgnoreCase);
+        private bool IsContinueCommand() =>
+            string.Equals(_command.Trim(), ConsoleConstants.Continue, StringComparison.OrdinalIgnoreCase);
+        private bool IsHomeCommand() =>
+            string.Equals(_command.Trim(), ConsoleConstants.Home, StringComparison.OrdinalIgnoreCase);
+        private bool IsShowLeagueCommand() =>
+            string.Equals(_command.Trim(), ConsoleConstants.ShowLeague, StringComparison.OrdinalIgnoreCase);
+        private bool IsShowOpponentCommand() =>
+            string.Equals(_command.Trim(), ConsoleConstants.ShowOpponent, StringComparison.OrdinalIgnoreCase);
+        private bool IsShowScheduleCommand() =>
+            string.Equals(_command.Trim(), ConsoleConstants.ShowSchedule, StringComparison.OrdinalIgnoreCase);
+        private bool IsShowTeamCommand() =>
+            string.Equals(_command.Trim(), ConsoleConstants.ShowTeam, StringComparison.OrdinalIgnoreCase);
         private bool IsAnalyzeRoundCommand() =>
             _command.StartsWith("analyze round ", StringComparison.OrdinalIgnoreCase);
         private bool IsAnalyzeRoundsCommand() =>
@@ -238,39 +271,33 @@ namespace ConsoleApp.Objects
             string.Equals(_command.Trim(), ConsoleConstants.Help, StringComparison.OrdinalIgnoreCase);
         private bool IsExitCommand() =>
             string.Equals(_command.Trim(), ConsoleConstants.Exit, StringComparison.OrdinalIgnoreCase);
-        private void Redraw() => Console.Clear();
+        private void Redraw() => _screenRenderer.Render(_currentScreenModel);
 
-        private string StartMatch()
+        private string ContinueMatch()
         {
             if (_world is null)
             {
-                return "No game has been started. Use start first." + Environment.NewLine;
+                return RenderCurrentScreen("No game has been started. Use start first.");
             }
 
-            bool? wasCursorVisible = HideCursor();
-            int? statusLineTop = WriteTransientStatus("Simulating matches for the current week...");
-
-            try
+            if (_pendingMatch is null)
             {
-                Team humanTeam = GetHumanTeam(_world);
-                int resolvedWeek = _world.Season.CurrentWeek;
-                SeasonProgressionResult result = _seasonProgressionService.ResolveCurrentWeek(_world);
-                _world = result.World;
-                MatchResult? humanResult = result.MatchResults
-                    .FirstOrDefault(matchResult => IsHumanMatch(matchResult, humanTeam.Id, _world));
-
-                string humanSummary = humanResult is null
-                    ? "Your team did not have a scheduled match this week."
-                    : RenderMatchResult(_world, humanResult);
-
-                return $"Resolved week {resolvedWeek}: {result.MatchResults.Count} matches." + Environment.NewLine
-                    + humanSummary + Environment.NewLine;
+                return RenderCurrentScreen("No match preview is active. Use start match first.");
             }
-            finally
-            {
-                ClearTransientStatus(statusLineTop);
-                RestoreCursor(wasCursorVisible);
-            }
+
+            Team humanTeam = GetHumanTeam(_world);
+            int resolvedWeek = _world.Season.CurrentWeek;
+            SeasonProgressionResult result = _seasonProgressionService.ResolveCurrentWeek(_world);
+            _world = result.World;
+            _pendingMatch = null;
+            MatchResult? humanResult = result.MatchResults
+                .FirstOrDefault(matchResult => IsHumanMatch(matchResult, humanTeam.Id, _world));
+
+            string message = humanResult is null
+                ? $"Resolved week {resolvedWeek}: Your team did not have a scheduled match."
+                : $"Resolved week {resolvedWeek}: {FormatMatchResultSummary(_world, humanResult)}";
+
+            return RenderHome(message);
         }
 
         private static void ClearPendingInput()
@@ -288,160 +315,375 @@ namespace ConsoleApp.Objects
             }
         }
 
-        private static int? WriteTransientStatus(string message)
-        {
-            try
-            {
-                int statusLineTop = Console.CursorTop;
-                Console.WriteLine(message);
-                return statusLineTop;
-            }
-            catch (IOException)
-            {
-                return null;
-            }
-        }
-
-        private static void ClearTransientStatus(int? statusLineTop)
-        {
-            if (statusLineTop is null)
-            {
-                return;
-            }
-
-            try
-            {
-                Console.SetCursorPosition(0, statusLineTop.Value);
-                Console.Write(new string(' ', Console.BufferWidth - 1));
-                Console.SetCursorPosition(0, statusLineTop.Value);
-            }
-            catch (ArgumentOutOfRangeException)
-            {
-            }
-            catch (IOException)
-            {
-            }
-        }
-
         private string StartGame(string? coachName = null, string? teamName = null)
         {
             int seed = _seedProvider();
             _world = _worldGenerationService.CreateWorld(seed, coachName, teamName);
-            Team humanTeam = GetHumanTeam(_world);
-            Coach humanCoach = GetHumanCoach(_world);
-            League humanLeague = GetTeamLeague(_world, humanTeam);
-            Division humanDivision = humanLeague.Divisions.First(division => division.Id == humanTeam.DivisionId);
-
-            return "New game started." + Environment.NewLine
-                + $"Seed: {seed}" + Environment.NewLine
-                + $"Coach: {humanCoach.Name}" + Environment.NewLine
-                + $"Team: {humanTeam.Name}" + Environment.NewLine
-                + $"League: {humanLeague.TierName} {humanLeague.Region} League" + Environment.NewLine
-                + $"Division: {humanDivision.Name} Division" + Environment.NewLine;
-        }
-
-        private static bool? HideCursor()
-        {
-            if (!OperatingSystem.IsWindows())
-            {
-                return null;
-            }
-
-            try
-            {
-                bool wasCursorVisible = Console.CursorVisible;
-                Console.CursorVisible = false;
-                return wasCursorVisible;
-            }
-            catch (IOException)
-            {
-                return null;
-            }
-        }
-
-        private static void RestoreCursor(bool? wasCursorVisible)
-        {
-            if (wasCursorVisible is null || !OperatingSystem.IsWindows())
-            {
-                return;
-            }
-
-            try
-            {
-                Console.CursorVisible = wasCursorVisible.Value;
-            }
-            catch (IOException)
-            {
-            }
-        }
-
-        private static string? ReadOptionalValue(string label)
-        {
-            Console.Write($"{label} (blank to generate): ");
-            string? value = Console.ReadLine();
-            return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+            _pendingMatch = null;
+            _screenNavigationState.CurrentScreen = ScreenKind.Home;
+            return RenderHome($"New game started. Seed: {seed}");
         }
 
         private string ShowLeague()
         {
             if (_world is null)
             {
-                return "No game has been started. Use start first." + Environment.NewLine;
+                return RenderCurrentScreen("No game has been started. Use start first.");
             }
 
             Team humanTeam = GetHumanTeam(_world);
             League league = GetTeamLeague(_world, humanTeam);
-            List<string> lines =
-            [
-                $"{league.TierName} {league.Region} League",
-                "Divisions:"
-            ];
-
-            foreach (Division division in league.Divisions)
-            {
-                lines.Add($"  {division.Name} Division");
-                lines.AddRange(division.TeamIds.Select(teamId => $"    {FormatTeamName(_world, teamId)}"));
-            }
-
-            lines.Add("Standings:");
-            int rank = 1;
-            foreach (LeagueStanding standing in league.Standings)
-            {
-                lines.Add(
-                    $"  {rank}. {FormatTeamName(_world, standing.TeamId)} "
-                    + $"{standing.MatchWins}-{standing.MatchLosses}, Points {standing.Points}");
-                rank++;
-            }
-
-            return string.Join(Environment.NewLine, lines) + Environment.NewLine;
+            _screenNavigationState.CurrentScreen = ScreenKind.League;
+            _currentScreenModel = BuildLeagueScreen(_world, humanTeam, league);
+            return _screenRenderer.RenderToString(_currentScreenModel);
         }
 
         private string ShowTeam()
         {
             if (_world is null)
             {
-                return "No game has been started. Use start first." + Environment.NewLine;
+                return RenderCurrentScreen("No game has been started. Use start first.");
             }
 
-            Coach coach = GetHumanCoach(_world);
             Team team = GetHumanTeam(_world);
             League league = GetTeamLeague(_world, team);
-            Division division = league.Divisions.First(currentDivision => currentDivision.Id == team.DivisionId);
-            IReadOnlyList<Player> players = _world.Players
+            _screenNavigationState.CurrentScreen = ScreenKind.Team;
+            _currentScreenModel = BuildTeamScreen(_world, team, league);
+            return _screenRenderer.RenderToString(_currentScreenModel);
+        }
+
+        private string ShowSchedule()
+        {
+            if (_world is null)
+            {
+                return RenderCurrentScreen("No game has been started. Use start first.");
+            }
+
+            Team humanTeam = GetHumanTeam(_world);
+            League league = GetTeamLeague(_world, humanTeam);
+            _screenNavigationState.CurrentScreen = ScreenKind.Schedule;
+            _currentScreenModel = BuildScheduleScreen(_world, humanTeam, league);
+            return _screenRenderer.RenderToString(_currentScreenModel);
+        }
+
+        private string ShowOpponent()
+        {
+            if (_world is null)
+            {
+                return RenderCurrentScreen("No game has been started. Use start first.");
+            }
+
+            if (_pendingMatch is null)
+            {
+                return RenderCurrentScreen("No match preview is active.");
+            }
+
+            Team humanTeam = GetHumanTeam(_world);
+            League league = GetTeamLeague(_world, humanTeam);
+            string opponentId = string.Equals(_pendingMatch.HomeTeamId, humanTeam.Id, StringComparison.Ordinal)
+                ? _pendingMatch.AwayTeamId
+                : _pendingMatch.HomeTeamId;
+            Team opponent = league.Teams.First(team => string.Equals(team.Id, opponentId, StringComparison.Ordinal));
+            _screenNavigationState.CurrentScreen = ScreenKind.MatchPreview;
+            _currentScreenModel = BuildTeamScreen(_world, opponent, league, $"Opponent: {opponent.Name}");
+            return _screenRenderer.RenderToString(_currentScreenModel);
+        }
+
+        private string RenderHome(string? message = null)
+        {
+            if (_world is null)
+            {
+                _screenNavigationState.CurrentScreen = ScreenKind.Home;
+                _currentScreenModel = BuildWelcomeScreen(message);
+                return _screenRenderer.RenderToString(_currentScreenModel);
+            }
+
+            Team humanTeam = GetHumanTeam(_world);
+            League league = GetTeamLeague(_world, humanTeam);
+            _screenNavigationState.CurrentScreen = ScreenKind.Home;
+            _currentScreenModel = BuildHomeScreen(_world, humanTeam, league, message);
+            return _screenRenderer.RenderToString(_currentScreenModel);
+        }
+
+        private string RenderMatchPreview()
+        {
+            if (_world is null)
+            {
+                return RenderCurrentScreen("No game has been started. Use start first.");
+            }
+
+            Team humanTeam = GetHumanTeam(_world);
+            League league = GetTeamLeague(_world, humanTeam);
+            ScheduledMatch? match = GetCurrentWeekHumanMatch(_world, humanTeam);
+            if (match is null)
+            {
+                _pendingMatch = null;
+                return RenderCurrentScreen("Your team does not have a scheduled match this week.");
+            }
+
+            _pendingMatch = match;
+            _screenNavigationState.CurrentScreen = ScreenKind.MatchPreview;
+            _currentScreenModel = BuildMatchPreviewScreen(_world, humanTeam, league, match);
+            return _screenRenderer.RenderToString(_currentScreenModel);
+        }
+
+        private string RenderHelp()
+        {
+            _currentScreenModel = BuildCurrentScreen(
+                "Available commands are listed in the footer. Use start to begin a new game.");
+            return _screenRenderer.RenderToString(_currentScreenModel);
+        }
+
+        private string RenderCurrentScreen(string? message = null)
+        {
+            _currentScreenModel = BuildCurrentScreen(message);
+            return _screenRenderer.RenderToString(_currentScreenModel);
+        }
+
+        private ScreenRenderModel BuildCurrentScreen(string? message = null)
+        {
+            if (_world is null)
+            {
+                return BuildWelcomeScreen(message);
+            }
+
+            Team humanTeam = GetHumanTeam(_world);
+            League league = GetTeamLeague(_world, humanTeam);
+            return _screenNavigationState.CurrentScreen switch
+            {
+                ScreenKind.Team => BuildTeamScreen(_world, humanTeam, league, message),
+                ScreenKind.League => BuildLeagueScreen(_world, humanTeam, league, message),
+                ScreenKind.Schedule => BuildScheduleScreen(_world, humanTeam, league, message),
+                ScreenKind.MatchPreview when _pendingMatch is not null =>
+                    BuildMatchPreviewScreen(_world, humanTeam, league, _pendingMatch, message),
+                _ => BuildHomeScreen(_world, humanTeam, league, message)
+            };
+        }
+
+        private static ScreenRenderModel BuildWelcomeScreen(string? message = null) =>
+            new()
+            {
+                Commands = [ConsoleConstants.Start, ConsoleConstants.Help],
+                ContentLines =
+                [
+                    "No active game.",
+                    "Start a new management career to generate the world, league, roster, and schedule.",
+                    string.Empty,
+                    "Recommended action: start"
+                ],
+                Header = new ScreenHeaderModel
+                {
+                    PrimaryLeft = "AutoSim",
+                    PrimaryRight = "No Active Game"
+                },
+                Message = message,
+                Title = "Home"
+            };
+
+        private static ScreenRenderModel BuildHomeScreen(
+            WorldState world,
+            Team humanTeam,
+            League league,
+            string? message = null)
+        {
+            LeagueStanding standing = GetStanding(league, humanTeam.Id);
+            Division division = GetDivision(league, humanTeam);
+            ScheduledMatch? nextMatch = GetNextHumanMatch(world, humanTeam);
+
+            return new ScreenRenderModel
+            {
+                Commands =
+                [
+                    ConsoleConstants.ShowTeam,
+                    ConsoleConstants.ShowLeague,
+                    ConsoleConstants.ShowSchedule,
+                    ConsoleConstants.StartMatch,
+                    ConsoleConstants.Help
+                ],
+                ContentLines =
+                [
+                    $"Next match: {FormatMatch(world, nextMatch)}",
+                    string.Empty,
+                    "Team snapshot",
+                    $"  Coach: {GetHumanCoach(world).Name}",
+                    $"  Team: {humanTeam.Name}",
+                    $"  Record: {standing.MatchWins}-{standing.MatchLosses}",
+                    $"  Points: {FormatPoints(standing.Points)}",
+                    string.Empty,
+                    $"Current league: {FormatLeagueName(league)}",
+                    $"Division: {division.Name} Division",
+                    string.Empty,
+                    $"Recommended action: {GetRecommendedAction(world, humanTeam)}"
+                ],
+                Header = BuildHeader(world, humanTeam, league),
+                Message = message,
+                Title = "Home"
+            };
+        }
+
+        private static ScreenRenderModel BuildTeamScreen(
+            WorldState world,
+            Team team,
+            League league,
+            string? message = null)
+        {
+            Coach coach = world.Coaches.First(currentCoach => string.Equals(currentCoach.Id, team.CoachId, StringComparison.Ordinal));
+            Division division = GetDivision(league, team);
+            IReadOnlyList<Player> players = world.Players
                 .Where(player => team.PlayerIds.Contains(player.Id))
                 .OrderBy(player => player.PositionRole)
+                .ThenBy(player => player.Name, StringComparer.Ordinal)
                 .ToList();
 
             List<string> lines =
             [
                 $"Coach: {coach.Name}",
                 $"Team: {team.Name}",
-                $"League: {league.TierName} {league.Region} League",
+                $"League: {FormatLeagueName(league)}",
                 $"Division: {division.Name} Division",
-                "Players:"
+                string.Empty,
+                "Roster",
+                "Role      Player"
             ];
-            lines.AddRange(players.Select(player => $"  {player.PositionRole}: {player.Name}"));
-            return string.Join(Environment.NewLine, lines) + Environment.NewLine;
+            lines.AddRange(players.Select(player => $"{player.PositionRole,-9} {player.Name}"));
+            lines.Add(string.Empty);
+            lines.Add($"Next match: {FormatMatch(world, GetNextHumanMatch(world, team))}");
+
+            return new ScreenRenderModel
+            {
+                Commands =
+                [
+                    ConsoleConstants.Home,
+                    ConsoleConstants.ShowLeague,
+                    ConsoleConstants.ShowSchedule,
+                    ConsoleConstants.StartMatch,
+                    ConsoleConstants.Help
+                ],
+                ContentLines = lines,
+                Header = BuildHeader(world, team, league),
+                Message = message,
+                Title = "Team"
+            };
+        }
+
+        private static ScreenRenderModel BuildLeagueScreen(
+            WorldState world,
+            Team humanTeam,
+            League league,
+            string? message = null)
+        {
+            Division division = GetDivision(league, humanTeam);
+            IReadOnlyList<LeagueStanding> standings = GetStandingsForDivision(league, division);
+            string standingsTitle = standings.Count > 0 ? $"{division.Name} Division Standings" : "Overall Standings";
+            standings = standings.Count > 0 ? standings : league.Standings;
+
+            List<string> lines =
+            [
+                $"League: {FormatLeagueName(league)}",
+                $"Your record: {FormatRecord(GetStanding(league, humanTeam.Id))}",
+                $"Your points: {FormatPoints(GetStanding(league, humanTeam.Id).Points)}",
+                string.Empty,
+                standingsTitle,
+                "Rank  Team                         Record  Points"
+            ];
+            int rank = 1;
+            lines.AddRange(standings.Select(standing =>
+                $"{rank++,4}  {FormatTeamName(world, standing.TeamId),-27} {FormatRecord(standing),-7} {FormatPoints(standing.Points)}"));
+
+            return new ScreenRenderModel
+            {
+                Commands =
+                [
+                    ConsoleConstants.Home,
+                    ConsoleConstants.ShowTeam,
+                    ConsoleConstants.ShowSchedule,
+                    ConsoleConstants.Help
+                ],
+                ContentLines = lines,
+                Header = BuildHeader(world, humanTeam, league),
+                Message = message,
+                Title = "League"
+            };
+        }
+
+        private static ScreenRenderModel BuildScheduleScreen(
+            WorldState world,
+            Team humanTeam,
+            League league,
+            string? message = null)
+        {
+            IReadOnlyList<ScheduledMatch> matches = league.Schedule
+                .Where(match => match.Week == world.Season.CurrentWeek)
+                .OrderBy(match => match.MatchType)
+                .ThenBy(match => FormatTeamName(world, match.HomeTeamId), StringComparer.Ordinal)
+                .ThenBy(match => FormatTeamName(world, match.AwayTeamId), StringComparer.Ordinal)
+                .ToList();
+            ScheduledMatch? humanMatch = matches.FirstOrDefault(match => IsTeamMatch(match, humanTeam.Id));
+
+            List<string> lines =
+            [
+                $"Current week: {world.Season.CurrentWeek}",
+                $"Human team match: {FormatMatch(world, humanMatch)}",
+                string.Empty,
+                "Scheduled matches",
+                "Match                                      Status"
+            ];
+            lines.AddRange(matches
+                .Take(12)
+                .Select(match => $"{FormatMatch(world, match),-42} {FormatMatchStatus(match)}"));
+
+            if (matches.Count > 12)
+            {
+                lines.Add($"... {matches.Count - 12} more matches");
+            }
+
+            return new ScreenRenderModel
+            {
+                Commands =
+                [
+                    ConsoleConstants.Home,
+                    ConsoleConstants.StartMatch,
+                    ConsoleConstants.ShowTeam,
+                    ConsoleConstants.ShowLeague,
+                    ConsoleConstants.Help
+                ],
+                ContentLines = lines,
+                Header = BuildHeader(world, humanTeam, league),
+                Message = message,
+                Title = "Schedule"
+            };
+        }
+
+        private static ScreenRenderModel BuildMatchPreviewScreen(
+            WorldState world,
+            Team humanTeam,
+            League league,
+            ScheduledMatch match,
+            string? message = null)
+        {
+            return new ScreenRenderModel
+            {
+                Commands =
+                [
+                    ConsoleConstants.Continue,
+                    ConsoleConstants.Cancel,
+                    ConsoleConstants.ShowTeam,
+                    ConsoleConstants.ShowOpponent
+                ],
+                ContentLines =
+                [
+                    $"Blue team: {FormatTeamName(world, match.HomeTeamId)}",
+                    $"Red team: {FormatTeamName(world, match.AwayTeamId)}",
+                    $"Match type: {match.MatchType}",
+                    $"Best of: {match.BestOf}",
+                    $"Week: {match.Week}",
+                    string.Empty,
+                    "Continue to resolve the current week. Live replay will come in a later pass."
+                ],
+                Header = BuildHeader(world, humanTeam, league),
+                Message = message,
+                Title = "Match Preview"
+            };
         }
 
         private string AnalyzeRound()
@@ -606,6 +848,61 @@ namespace ConsoleApp.Objects
                 .SelectMany(tier => tier.Leagues)
                 .Single(league => league.Id == team.LeagueId);
 
+        private static ScreenHeaderModel BuildHeader(WorldState world, Team humanTeam, League league)
+        {
+            LeagueStanding standing = GetStanding(league, humanTeam.Id);
+            return new ScreenHeaderModel
+            {
+                PrimaryLeft = "AutoSim",
+                PrimaryRight = $"Week {world.Season.CurrentWeek} | {FormatLeagueName(league)}",
+                SecondaryLeft = humanTeam.Name,
+                SecondaryRight = $"Record {standing.MatchWins}-{standing.MatchLosses} | Points {FormatPoints(standing.Points)}"
+            };
+        }
+
+        private static Division GetDivision(League league, Team team) =>
+            league.Divisions.First(division => string.Equals(division.Id, team.DivisionId, StringComparison.Ordinal));
+
+        private static LeagueStanding GetStanding(League league, string teamId) =>
+            league.Standings.FirstOrDefault(standing => string.Equals(standing.TeamId, teamId, StringComparison.Ordinal))
+            ?? new LeagueStanding
+            {
+                TeamId = teamId
+            };
+
+        private static IReadOnlyList<LeagueStanding> GetStandingsForDivision(League league, Division division)
+        {
+            HashSet<string> divisionTeamIds = division.TeamIds.ToHashSet(StringComparer.Ordinal);
+            return league.Standings
+                .Where(standing => divisionTeamIds.Contains(standing.TeamId))
+                .OrderByDescending(standing => standing.MatchWins)
+                .ThenByDescending(standing => standing.Points)
+                .ThenBy(standing => FormatTeamName(league, standing.TeamId), StringComparer.Ordinal)
+                .ToList();
+        }
+
+        private static ScheduledMatch? GetCurrentWeekHumanMatch(WorldState world, Team humanTeam) =>
+            GetTeamLeague(world, humanTeam).Schedule
+                .Where(match => match.Week == world.Season.CurrentWeek)
+                .Where(match => IsTeamMatch(match, humanTeam.Id))
+                .OrderBy(match => match.MatchType)
+                .ThenBy(match => match.Id, StringComparer.Ordinal)
+                .FirstOrDefault();
+
+        private static ScheduledMatch? GetNextHumanMatch(WorldState world, Team humanTeam) =>
+            GetTeamLeague(world, humanTeam).Schedule
+                .Where(match => match.Week >= world.Season.CurrentWeek)
+                .Where(match => match.Result is null)
+                .Where(match => IsTeamMatch(match, humanTeam.Id))
+                .OrderBy(match => match.Week)
+                .ThenBy(match => match.MatchType)
+                .ThenBy(match => match.Id, StringComparer.Ordinal)
+                .FirstOrDefault();
+
+        private static bool IsTeamMatch(ScheduledMatch match, string teamId) =>
+            string.Equals(match.HomeTeamId, teamId, StringComparison.Ordinal)
+            || string.Equals(match.AwayTeamId, teamId, StringComparison.Ordinal);
+
         private static bool IsHumanMatch(MatchResult result, string humanTeamId, WorldState world)
         {
             ScheduledMatch? match = world.Tiers
@@ -623,6 +920,34 @@ namespace ConsoleApp.Objects
                 .SelectMany(tier => tier.Leagues)
                 .SelectMany(league => league.Teams)
                 .FirstOrDefault(team => team.Id == teamId)?.Name ?? teamId;
+
+        private static string FormatTeamName(League league, string teamId) =>
+            league.Teams.FirstOrDefault(team => team.Id == teamId)?.Name ?? teamId;
+
+        private static string FormatLeagueName(League league) =>
+            $"{league.TierName} {league.Region} League";
+
+        private static string FormatMatch(WorldState world, ScheduledMatch? match) =>
+            match is null
+                ? "None scheduled"
+                : $"Week {match.Week}: {FormatTeamName(world, match.HomeTeamId)} vs {FormatTeamName(world, match.AwayTeamId)}";
+
+        private static string FormatMatchStatus(ScheduledMatch match) =>
+            match.Result is null ? "Scheduled" : "Complete";
+
+        private static string FormatPoints(int points) =>
+            points >= 0 ? $"+{points}" : points.ToString();
+
+        private static string FormatRecord(LeagueStanding standing) =>
+            $"{standing.MatchWins}-{standing.MatchLosses}";
+
+        private static string GetRecommendedAction(WorldState world, Team humanTeam) =>
+            GetCurrentWeekHumanMatch(world, humanTeam) is null ? ConsoleConstants.ShowSchedule : ConsoleConstants.StartMatch;
+
+        private static string FormatMatchResultSummary(WorldState world, MatchResult result) =>
+            $"{FormatTeamName(world, result.WinningTeamId)} won "
+            + $"{result.BlueRoundWins}-{result.RedRoundWins} over "
+            + $"{FormatTeamName(world, result.LosingTeamId)}.";
 
         private static string RenderMatchResult(WorldState world, MatchResult result)
         {

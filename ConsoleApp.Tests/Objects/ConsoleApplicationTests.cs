@@ -156,6 +156,7 @@ namespace ConsoleApp.Tests.Objects
             string startOutput = application.ExecuteCommand("start");
             string teamOutput = application.ExecuteCommand("show team");
             string leagueOutput = application.ExecuteCommand("show league");
+            string scheduleOutput = application.ExecuteCommand("show schedule");
             string matchOutput = application.ExecuteCommand("start match");
 
             Assert.Multiple(() =>
@@ -166,14 +167,16 @@ namespace ConsoleApp.Tests.Objects
                 Assert.That(startOutput, Does.Contain("Team:"));
                 Assert.That(startOutput, Does.Not.Contain("Team: AutoSim United"));
                 Assert.That(teamOutput, Does.Contain("Coach:"));
-                Assert.That(teamOutput, Does.Contain("Players:"));
-                Assert.That(leagueOutput, Does.Contain("Standings:"));
-                Assert.That(matchOutput, Does.Contain("Resolved week 1: 120 matches."));
+                Assert.That(teamOutput, Does.Contain("Roster"));
+                Assert.That(leagueOutput, Does.Contain("Standings"));
+                Assert.That(scheduleOutput, Does.Contain("Scheduled matches"));
+                Assert.That(matchOutput, Does.Contain("Match Preview"));
+                Assert.That(matchOutput, Does.Contain("Commands: continue | cancel | show team | show opponent"));
             });
         }
 
         [Test]
-        public void ExecuteCommand_StartMatchWithDifferentCasing_StartsMatch()
+        public void ExecuteCommand_StartMatchWithDifferentCasing_RendersMatchPreview()
         {
             string directory = CreateTempDirectory();
             ConsoleApplication application = new(directory, () => 123, new CountingMatchEngineWrapper());
@@ -181,7 +184,7 @@ namespace ConsoleApp.Tests.Objects
 
             string output = application.ExecuteCommand("Start Match");
 
-            Assert.That(output, Does.Contain("Resolved week 1: 120 matches."));
+            Assert.That(output, Does.Contain("Match Preview"));
         }
 
         [Test]
@@ -195,43 +198,64 @@ namespace ConsoleApp.Tests.Objects
             Assert.Multiple(() =>
             {
                 Assert.That(output, Does.Contain("Unknown command: start macth"));
-                Assert.That(output, Does.Contain("Type help for available commands."));
+                Assert.That(output, Does.Contain("Commands: start | help"));
             });
         }
 
         [Test]
-        public void ExecuteCommand_StartMatch_RoutesThroughMatchEngineWrapper()
+        public void ExecuteCommand_ContinueAfterStartMatch_RoutesThroughMatchEngineWrapper()
         {
             string directory = CreateTempDirectory();
             CountingMatchEngineWrapper matchEngineWrapper = new();
             ConsoleApplication application = new(directory, () => 123, matchEngineWrapper);
             application.ExecuteCommand("start");
+            application.ExecuteCommand("start match");
 
-            string output = application.ExecuteCommand("start match");
+            string output = application.ExecuteCommand("continue");
 
             Assert.Multiple(() =>
             {
                 Assert.That(matchEngineWrapper.CallCount, Is.GreaterThan(0));
-                Assert.That(output, Does.Contain("Match:"));
-                Assert.That(output, Does.Contain("Best of:"));
-                Assert.That(output, Does.Contain("Winner:"));
+                Assert.That(output, Does.Contain("Resolved week 1:"));
+                Assert.That(output, Does.Contain("Home"));
+                Assert.That(output, Does.Contain("won"));
             });
         }
 
         [Test]
-        public void ExecuteCommand_StartMatch_AdvancesExactlyOneWeek()
+        public void ExecuteCommand_ContinueAfterStartMatch_AdvancesExactlyOneWeek()
         {
             string directory = CreateTempDirectory();
             ConsoleApplication application = new(directory, () => 123, new CountingMatchEngineWrapper());
             application.ExecuteCommand("start");
 
-            string firstOutput = application.ExecuteCommand("start match");
-            string secondOutput = application.ExecuteCommand("start match");
+            application.ExecuteCommand("start match");
+            string firstOutput = application.ExecuteCommand("continue");
+            application.ExecuteCommand("start match");
+            string secondOutput = application.ExecuteCommand("continue");
 
             Assert.Multiple(() =>
             {
-                Assert.That(firstOutput, Does.Contain("Resolved week 1: 120 matches."));
-                Assert.That(secondOutput, Does.Contain("Resolved week 2: 120 matches."));
+                Assert.That(firstOutput, Does.Contain("Resolved week 1:"));
+                Assert.That(secondOutput, Does.Contain("Resolved week 2:"));
+            });
+        }
+
+        [Test]
+        public void ExecuteCommand_HomeAfterShowingTeam_RendersHomeScreen()
+        {
+            string directory = CreateTempDirectory();
+            ConsoleApplication application = new(directory, () => 123);
+            application.ExecuteCommand("start");
+            application.ExecuteCommand("show team");
+
+            string output = application.ExecuteCommand("home");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(output, Does.Contain("Home"));
+                Assert.That(output, Does.Contain("Next match:"));
+                Assert.That(output, Does.Contain("Recommended action:"));
             });
         }
 
