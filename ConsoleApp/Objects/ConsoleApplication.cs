@@ -216,17 +216,17 @@ namespace ConsoleApp.Objects
             }
 
             Team humanTeam = GetHumanTeam(_world);
-            int firstResolvedWeek = _world.Season.CurrentWeek;
-            SeasonProgressionResult result = _seasonProgressionService.ResolveNextMatchForTeam(_world, humanTeam.Id);
+            int resolvedWeek = _world.Season.CurrentWeek;
+            SeasonProgressionResult result = _seasonProgressionService.ResolveCurrentWeek(_world);
             _world = result.World;
             MatchResult? humanResult = result.MatchResults
                 .FirstOrDefault(matchResult => IsHumanMatch(matchResult, humanTeam.Id, _world));
 
             string humanSummary = humanResult is null
-                ? "Your team does not have an available scheduled match."
+                ? "Your team did not have a scheduled match this week."
                 : RenderMatchResult(_world, humanResult);
 
-            return $"Resolved from week {firstResolvedWeek}: {result.MatchResults.Count} matches." + Environment.NewLine
+            return $"Resolved week {resolvedWeek}: {result.MatchResults.Count} matches." + Environment.NewLine
                 + humanSummary + Environment.NewLine;
         }
 

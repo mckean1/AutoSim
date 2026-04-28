@@ -164,7 +164,7 @@ namespace ConsoleApp.Tests.Objects
                 Assert.That(teamOutput, Does.Contain("Coach: Human Coach"));
                 Assert.That(teamOutput, Does.Contain("Players:"));
                 Assert.That(leagueOutput, Does.Contain("Standings:"));
-                Assert.That(matchOutput, Does.Contain("Resolved from week 1:"));
+                Assert.That(matchOutput, Does.Contain("Resolved week 1: 120 matches."));
             });
         }
 
@@ -184,6 +184,23 @@ namespace ConsoleApp.Tests.Objects
                 Assert.That(output, Does.Contain("Match:"));
                 Assert.That(output, Does.Contain("Best of:"));
                 Assert.That(output, Does.Contain("Winner:"));
+            });
+        }
+
+        [Test]
+        public void ExecuteCommand_StartMatch_AdvancesExactlyOneWeek()
+        {
+            string directory = CreateTempDirectory();
+            ConsoleApplication application = new(directory, () => 123, new CountingMatchEngineWrapper());
+            application.ExecuteCommand("start");
+
+            string firstOutput = application.ExecuteCommand("start match");
+            string secondOutput = application.ExecuteCommand("start match");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(firstOutput, Does.Contain("Resolved week 1: 120 matches."));
+                Assert.That(secondOutput, Does.Contain("Resolved week 2: 120 matches."));
             });
         }
 

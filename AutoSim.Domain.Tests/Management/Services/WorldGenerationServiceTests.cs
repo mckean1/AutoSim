@@ -100,6 +100,89 @@ namespace AutoSim.Domain.Tests.Management.Services
         }
 
         [Test]
+        public void CreateWorld_NewGame_EveryLeagueHasTwentyThreeRegularSeasonWeeks()
+        {
+            WorldState world = new WorldGenerationService().CreateWorld(seed: 123);
+            IReadOnlyList<League> leagues = world.Tiers.SelectMany(tier => tier.Leagues).ToList();
+
+            Assert.That(leagues, Is.All.Matches<League>(league =>
+                GetRegularSeasonSchedule(league).Select(match => match.Week).Distinct().Count() == 23));
+        }
+
+        [Test]
+        public void CreateWorld_NewGame_EveryTeamHasOneRegularSeasonMatchPerWeek()
+        {
+            WorldState world = new WorldGenerationService().CreateWorld(seed: 123);
+
+            foreach (League league in world.Tiers.SelectMany(tier => tier.Leagues))
+            {
+                IReadOnlyList<ScheduledMatch> schedule = GetRegularSeasonSchedule(league);
+                foreach (Team team in league.Teams)
+                {
+                    IReadOnlyList<int> weeklyCounts = Enumerable.Range(1, 23)
+                        .Select(week => schedule.Count(match => match.Week == week
+                            && (match.HomeTeamId == team.Id || match.AwayTeamId == team.Id)))
+                        .ToList();
+
+                    Assert.That(
+                        weeklyCounts,
+                        Is.All.EqualTo(1),
+                        $"{league.Id} {team.Id} should play exactly once per regular-season week.");
+                }
+            }
+        }
+
+        [Test]
+        public void CreateWorld_NewGame_EachDivisionOpponentIsPlayedTwice()
+        {
+            WorldState world = new WorldGenerationService().CreateWorld(seed: 123);
+
+            foreach (League league in world.Tiers.SelectMany(tier => tier.Leagues))
+            {
+                IReadOnlyList<ScheduledMatch> schedule = GetRegularSeasonSchedule(league);
+                foreach (Division division in league.Divisions)
+                {
+                    foreach (string teamId in division.TeamIds)
+                    {
+                        foreach (string opponentId in division.TeamIds.Where(opponentId => opponentId != teamId))
+                        {
+                            Assert.That(
+                                CountGamesBetween(schedule, teamId, opponentId),
+                                Is.EqualTo(2),
+                                $"{teamId} should play division opponent {opponentId} twice.");
+                        }
+                    }
+                }
+            }
+        }
+
+        [Test]
+        public void CreateWorld_NewGame_EachOutOfDivisionOpponentIsPlayedOnce()
+        {
+            WorldState world = new WorldGenerationService().CreateWorld(seed: 123);
+
+            foreach (League league in world.Tiers.SelectMany(tier => tier.Leagues))
+            {
+                IReadOnlyList<ScheduledMatch> schedule = GetRegularSeasonSchedule(league);
+                Dictionary<string, string> divisionByTeamId = league.Divisions
+                    .SelectMany(division => division.TeamIds.Select(teamId => new { division.Id, TeamId = teamId }))
+                    .ToDictionary(entry => entry.TeamId, entry => entry.Id, StringComparer.Ordinal);
+
+                foreach (Team team in league.Teams)
+                {
+                    foreach (Team opponent in league.Teams.Where(opponent => opponent.Id != team.Id
+                        && divisionByTeamId[opponent.Id] != divisionByTeamId[team.Id]))
+                    {
+                        Assert.That(
+                            CountGamesBetween(schedule, team.Id, opponent.Id),
+                            Is.EqualTo(1),
+                            $"{team.Id} should play out-of-division opponent {opponent.Id} once.");
+                    }
+                }
+            }
+        }
+
+        [Test]
         public void CreateWorld_NewGame_ReservesLeaguePlayoffWeeks()
         {
             WorldState world = new WorldGenerationService().CreateWorld(seed: 123);
@@ -137,5 +220,18 @@ namespace AutoSim.Domain.Tests.Management.Services
                     Is.EqualTo(9));
             });
         }
+
+        private static int CountGamesBetween(
+            IReadOnlyList<ScheduledMatch> schedule,
+            string teamId,
+            string opponentId) =>
+            schedule.Count(match =>
+                (match.HomeTeamId == teamId && match.AwayTeamId == opponentId)
+                || (match.HomeTeamId == opponentId && match.AwayTeamId == teamId));
+
+        private static IReadOnlyList<ScheduledMatch> GetRegularSeasonSchedule(League league) =>
+            league.Schedule
+                .Where(match => match.MatchType == MatchType.RegularSeason)
+                .ToList();
     }
 }
