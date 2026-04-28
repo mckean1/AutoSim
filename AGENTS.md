@@ -3,6 +3,19 @@
 ## Language & Framework
 - **Target Framework:** .NET Framework 10
 
+## Architecture Guardrails
+- Prioritize readability, clear ownership, testability, and maintainability over the smallest possible diff.
+- Keep UI/entry-point code thin. It should handle input, dispatch work, and format output; it should not own business rules or workflow orchestration.
+- Keep domain/core logic independent from UI, persistence, network, filesystem, and framework-specific concerns.
+- Do not add new behavior to god classes or oversized files. Extract a focused service, handler, model, or helper first.
+- Prefer small classes/modules with one clear responsibility and one reason to change.
+- Avoid mixing input handling, orchestration, business rules, rendering, and persistence in the same class.
+- Use explicit names that describe responsibility. Avoid vague catch-all names like `Manager`, `Helper`, `Processor`, or generic `Result` types when a more specific name would be clearer.
+- Prefer immutable records/value objects for results, snapshots, configuration, and domain values where practical.
+- Avoid long positional argument lists for complex data. Prefer named parameters, options objects, builders, or object initializers.
+- Add or preserve tests for meaningful behavior, especially before refactoring risky code.
+- After changes, review the diff for responsibility drift and report any remaining architecture concerns.
+
 ## Naming Conventions
 - **PascalCase** for public members, types, namespaces, methods, properties, events, and constants.
 - **camelCase** for local variables, parameters, and private fields.

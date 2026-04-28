@@ -98,7 +98,7 @@ namespace ConsoleApp.Presentation
                     $"{winningTeam} wins round {round.RoundNumber}. Match score: {blueWins}-{redWins}."),
                 Message(300, ReplayMessageCategory.MatchEnd, ReplayMessageSeverity.Critical,
                     IsMatchComplete(match, blueWins, redWins)
-                        ? $"{teamNameResolver(match.WinningTeamId)} wins the match {match.BlueRoundWins}-{match.RedRoundWins}."
+                        ? $"{teamNameResolver(match.WinningTeamId)} wins the match {FormatWinnerLoserScore(match)}."
                         : $"Round {round.RoundNumber} complete.")
             ];
         }
@@ -118,6 +118,11 @@ namespace ConsoleApp.Presentation
 
         private static bool IsMatchComplete(MatchResult match, int blueWins, int redWins) =>
             blueWins == match.BlueRoundWins && redWins == match.RedRoundWins;
+
+        private static string FormatWinnerLoserScore(MatchResult match) =>
+            string.Equals(match.WinningTeamId, match.BlueTeamId, StringComparison.Ordinal)
+                ? $"{match.BlueRoundWins}-{match.RedRoundWins}"
+                : $"{match.RedRoundWins}-{match.BlueRoundWins}";
 
         private static string GetChampionName(IReadOnlyDictionary<string, string> championNames, string championId) =>
             championNames.TryGetValue(championId, out string? name) ? name : championId;

@@ -8,8 +8,17 @@ namespace ConsoleApp.Screens
     /// </summary>
     internal sealed class ConsoleScreenRenderer
     {
+        private const int DefaultHeight = 25;
         private const int DefaultWidth = 80;
         private const int MinimumWidth = 40;
+        private const string BottomLeft = "\u255A";
+        private const string BottomRight = "\u255D";
+        private const string Horizontal = "\u2550";
+        private const string MiddleLeft = "\u2560";
+        private const string MiddleRight = "\u2563";
+        private const string TopLeft = "\u2554";
+        private const string TopRight = "\u2557";
+        private const string Vertical = "\u2551";
 
         /// <summary>
         /// Renders a screen directly to the console.
@@ -22,6 +31,56 @@ namespace ConsoleApp.Screens
 
             Console.Clear();
             Console.Write(RenderToString(model, GetConsoleWidth(), command));
+        }
+
+        /// <summary>
+        /// Builds a fixed-size console frame for in-place rendering.
+        /// </summary>
+        /// <param name="model">The screen render model.</param>
+        /// <param name="width">The target console width.</param>
+        /// <param name="height">The target console height.</param>
+        /// <param name="command">The current command text.</param>
+        /// <returns>The fixed-size frame.</returns>
+        public ConsoleFrame BuildFrame(ScreenRenderModel model, int width, int height, string command = "")
+        {
+            ArgumentNullException.ThrowIfNull(model);
+
+            int safeWidth = Math.Max(MinimumWidth, width);
+            int safeHeight = Math.Max(1, height);
+            int innerWidth = safeWidth - 2;
+            int headerLineCount = 4;
+            int footerLineCount = 4;
+            int bodyLineCount = Math.Max(0, safeHeight - headerLineCount - footerLineCount);
+            List<string> bodyLines = BuildBodyLines(model, bodyLineCount);
+            List<string> lines = [];
+
+            AppendBorder(lines, TopLeft, Horizontal, TopRight, innerWidth);
+            AppendContentRow(
+                lines,
+                BuildSplitLine(model.Header.PrimaryLeft, model.Header.PrimaryRight, GetContentWidth(innerWidth)),
+                innerWidth);
+            AppendContentRow(
+                lines,
+                BuildSplitLine(model.Header.SecondaryLeft, model.Header.SecondaryRight, GetContentWidth(innerWidth)),
+                innerWidth);
+            AppendBorder(lines, MiddleLeft, Horizontal, MiddleRight, innerWidth);
+
+            foreach (string line in bodyLines)
+            {
+                AppendContentRow(lines, line, innerWidth);
+            }
+
+            AppendBorder(lines, MiddleLeft, Horizontal, MiddleRight, innerWidth);
+            AppendContentRow(lines, $"Commands: {string.Join(" | ", model.Commands)}", innerWidth);
+            AppendContentRow(lines, $"{ConsoleConstants.Prompt}{command}", innerWidth);
+            AppendBorder(lines, BottomLeft, Horizontal, BottomRight, innerWidth);
+
+            while (lines.Count < safeHeight)
+            {
+                lines.Add(new string(' ', safeWidth));
+            }
+
+            return new ConsoleFrame(lines.Take(safeHeight).Select(line => Fit(line, safeWidth)).ToList(), safeWidth, safeHeight);
         }
 
         /// <summary>
@@ -39,45 +98,71 @@ namespace ConsoleApp.Screens
             int innerWidth = safeWidth - 2;
             StringBuilder builder = new();
 
-            AppendBorder(builder, '╔', '═', '╗', innerWidth);
-            AppendContentRow(
+            AppendLine(builder, BuildBorder(TopLeft, Horizontal, TopRight, innerWidth));
+            AppendLine(
                 builder,
-                BuildSplitLine(model.Header.PrimaryLeft, model.Header.PrimaryRight, GetContentWidth(innerWidth)),
-                innerWidth);
-            AppendContentRow(
+                BuildRow(BuildSplitLine(model.Header.PrimaryLeft, model.Header.PrimaryRight, GetContentWidth(innerWidth))));
+            AppendLine(
                 builder,
-                BuildSplitLine(model.Header.SecondaryLeft, model.Header.SecondaryRight, GetContentWidth(innerWidth)),
-                innerWidth);
-            AppendBorder(builder, '╠', '═', '╣', innerWidth);
+                BuildRow(BuildSplitLine(model.Header.SecondaryLeft, model.Header.SecondaryRight, GetContentWidth(innerWidth))));
+            AppendLine(builder, BuildBorder(MiddleLeft, Horizontal, MiddleRight, innerWidth));
 
-            AppendContentRow(builder, model.Title, innerWidth);
+            AppendLine(builder, BuildRow(FitWithPadding(model.Title, innerWidth)));
             if (!string.IsNullOrWhiteSpace(model.Message))
             {
-                AppendContentRow(builder, model.Message, innerWidth);
-                AppendContentRow(builder, string.Empty, innerWidth);
+                AppendLine(builder, BuildRow(FitWithPadding(model.Message, innerWidth)));
+                AppendLine(builder, BuildRow(FitWithPadding(string.Empty, innerWidth)));
             }
 
             foreach (string line in model.ContentLines)
             {
-                AppendContentRow(builder, line, innerWidth);
+                AppendLine(builder, BuildRow(FitWithPadding(line, innerWidth)));
             }
 
-            AppendBorder(builder, '╠', '═', '╣', innerWidth);
-            AppendContentRow(builder, $"Commands: {string.Join(" | ", model.Commands)}", innerWidth);
-            AppendContentRow(builder, $"{ConsoleConstants.Prompt}{command}", innerWidth);
-            AppendBorder(builder, '╚', '═', '╝', innerWidth);
-
+            AppendLine(builder, BuildBorder(MiddleLeft, Horizontal, MiddleRight, innerWidth));
+            AppendLine(builder, BuildRow(FitWithPadding($"Commands: {string.Join(" | ", model.Commands)}", innerWidth)));
+            AppendLine(builder, BuildRow(FitWithPadding($"{ConsoleConstants.Prompt}{command}", innerWidth)));
+            AppendLine(builder, BuildBorder(BottomLeft, Horizontal, BottomRight, innerWidth));
             return builder.ToString();
         }
 
-        private static void AppendBorder(StringBuilder builder, char left, char fill, char right, int innerWidth) =>
-            builder.Append(left).Append(new string(fill, innerWidth)).Append(right).AppendLine();
+        private static List<string> BuildBodyLines(ScreenRenderModel model, int bodyLineCount)
+        {
+            List<string> lines = [model.Title];
+            if (!string.IsNullOrWhiteSpace(model.Message))
+            {
+                lines.Add(model.Message);
+                lines.Add(string.Empty);
+            }
 
-        private static void AppendContentRow(StringBuilder builder, string value, int innerWidth) =>
-            AppendRow(builder, FitWithPadding(value, innerWidth));
+            int remainingContentLines = Math.Max(0, bodyLineCount - lines.Count);
+            lines.AddRange(model.ContentLines.Take(remainingContentLines));
 
-        private static void AppendRow(StringBuilder builder, string value) =>
-            builder.Append('║').Append(value).Append('║').AppendLine();
+            while (lines.Count < bodyLineCount)
+            {
+                lines.Add(string.Empty);
+            }
+
+            return lines;
+        }
+
+        private static void AppendBorder(List<string> lines, string left, string fill, string right, int innerWidth) =>
+            lines.Add(BuildBorder(left, fill, right, innerWidth));
+
+        private static void AppendContentRow(List<string> lines, string value, int innerWidth) =>
+            lines.Add(BuildRow(FitWithPadding(value, innerWidth)));
+
+        private static string BuildRow(string value) =>
+            $"{Vertical}{value}{Vertical}";
+
+        private static string BuildBorder(string left, string fill, string right, int innerWidth) =>
+            $"{left}{Repeat(fill, innerWidth)}{right}";
+
+        private static void AppendLine(StringBuilder builder, string line) =>
+            builder.AppendLine(line);
+
+        private static string Repeat(string value, int count) =>
+            string.Concat(Enumerable.Repeat(value, count));
 
         private static string BuildSplitLine(string left, string right, int innerWidth)
         {
@@ -137,7 +222,12 @@ namespace ConsoleApp.Screens
                 return value;
             }
 
-            return width == 1 ? value[..1] : $"{value[..(width - 1)]}…";
+            if (width <= 3)
+            {
+                return value[..width];
+            }
+
+            return $"{value[..(width - 3)]}...";
         }
 
         private static int GetConsoleWidth()

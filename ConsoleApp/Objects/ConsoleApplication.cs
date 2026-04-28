@@ -21,12 +21,15 @@ namespace ConsoleApp.Objects
         private const int RequiredMageCount = 2;
         private const int RequiredMarksmanCount = 2;
         private const int RequiredSupportCount = 2;
+        private static readonly TimeSpan LiveReplayRenderInterval = TimeSpan.FromMilliseconds(66);
         private static readonly TimeSpan ReplayPollDelay = TimeSpan.FromMilliseconds(25);
         private DateTime _replayPlaybackStartedAtUtc;
+        private TimeSpan _replayPlaybackStartedFrom;
 
         private string _command;
         private string _previousCommand;
         private bool _isProcessingCommand;
+        private DateTime _nextLiveReplayRenderAtUtc;
         private DateTime _nextReplayAdvanceAtUtc;
         private readonly RoundAnalysisRenderer _roundAnalysisRenderer;
         private readonly AggregateRoundAnalysisRenderer _aggregateRoundAnalysisRenderer;
@@ -43,6 +46,7 @@ namespace ConsoleApp.Objects
         private readonly ReplayPresenter _replayPresenter;
         private readonly RoundDraftValidator _roundDraftValidator;
         private readonly DeterministicRoundDraftService _roundDraftService;
+        private readonly ConsoleFrameRenderer _consoleFrameRenderer;
         private readonly ScreenNavigationState _screenNavigationState;
         private readonly ConsoleScreenRenderer _screenRenderer;
         private readonly SeasonProgressionService _seasonProgressionService;
@@ -59,6 +63,7 @@ namespace ConsoleApp.Objects
         private ScreenKind _reviewBackScreen;
         private int _selectedReviewRoundNumber;
         private ScheduledMatch? _pendingMatch;
+        private WeekSimulationSession? _weekSimulationSession;
         private ScreenRenderModel _currentScreenModel;
         private AppInputMode _inputMode;
         private NewGameSetupState? _newGameSetupState;
@@ -75,8 +80,10 @@ namespace ConsoleApp.Objects
             _command = string.Empty;
             _previousCommand = string.Empty;
             _isProcessingCommand = false;
+            _nextLiveReplayRenderAtUtc = DateTime.MinValue;
             _nextReplayAdvanceAtUtc = DateTime.MinValue;
             _replayPlaybackStartedAtUtc = DateTime.MinValue;
+            _replayPlaybackStartedFrom = TimeSpan.Zero;
             _logDirectory = logDirectory;
             _roundAnalysisRenderer = new RoundAnalysisRenderer();
             _aggregateRoundAnalysisRenderer = new AggregateRoundAnalysisRenderer();
@@ -92,6 +99,7 @@ namespace ConsoleApp.Objects
             _replayPresenter = new ReplayPresenter();
             _roundDraftValidator = new RoundDraftValidator();
             _roundDraftService = new DeterministicRoundDraftService();
+            _consoleFrameRenderer = new ConsoleFrameRenderer();
             _screenNavigationState = new ScreenNavigationState();
             _screenRenderer = new ConsoleScreenRenderer();
             _seasonProgressionService = new SeasonProgressionService(matchEngineWrapper);
@@ -113,18 +121,31 @@ namespace ConsoleApp.Objects
         /// </summary>
         public void Run()
         {
-            _screenRenderer.Render(_currentScreenModel);
-
-            while (true)
+            try
             {
-                if (IsLiveReplayPlaying())
-                {
-                    HandleLiveReplayPlayback();
-                    continue;
-                }
+                _screenRenderer.Render(_currentScreenModel);
 
-                RenderPrompt();
-                HandleInteractiveKey(Console.ReadKey(intercept: true), allowReplayHotkeys: false);
+                while (true)
+                {
+                    if (IsLiveReplayPlaying())
+                    {
+                        HandleLiveReplayPlayback();
+                        continue;
+                    }
+
+                    if (IsWeekSimulationRunning())
+                    {
+                        HandleWeekSimulationPreparation();
+                        continue;
+                    }
+
+                    RenderPrompt();
+                    HandleInteractiveKey(Console.ReadKey(intercept: true), allowReplayHotkeys: false);
+                }
+            }
+            finally
+            {
+                RestoreConsoleCursor();
             }
         }
 
@@ -150,7 +171,7 @@ namespace ConsoleApp.Objects
                 }
 
                 ExecuteCommand(_command);
-                _screenRenderer.Render(_currentScreenModel);
+                RenderCurrentModelToConsole(forceLiveFrame: true);
 
                 _previousCommand = _command;
             }
@@ -170,6 +191,7 @@ namespace ConsoleApp.Objects
         public string ExecuteCommand(string command)
         {
             _command = command ?? string.Empty;
+            TryRefreshWeekSimulationSession();
 
             if (_inputMode == AppInputMode.NewGameSetup)
             {
@@ -191,6 +213,11 @@ namespace ConsoleApp.Objects
             if (IsStartMatchCommand())
             {
                 return RenderMatchPreview();
+            }
+
+            if (IsStatusCommand())
+            {
+                return RenderStatus();
             }
 
             if (IsViewLastMatchCommand())
@@ -290,6 +317,11 @@ namespace ConsoleApp.Objects
 
             if (IsQuitReplayCommand())
             {
+                if (_weekSimulationSession?.Status == WeekSimulationStatus.Running)
+                {
+                    return RenderReplayPreparation("Replay is still preparing. You can leave it running or wait here.");
+                }
+
                 return RenderMatchSummary("Replay closed.");
             }
 
@@ -421,6 +453,7 @@ namespace ConsoleApp.Objects
         /// </summary>
         private void RenderPrompt()
         {
+            RestoreConsoleCursor();
             _screenRenderer.Render(_currentScreenModel, _command);
         }
 
@@ -428,6 +461,8 @@ namespace ConsoleApp.Objects
             string.Equals(_command.Trim(), ConsoleConstants.Start, StringComparison.OrdinalIgnoreCase);
         private bool IsStartMatchCommand() =>
             string.Equals(_command.Trim(), ConsoleConstants.StartMatch, StringComparison.OrdinalIgnoreCase);
+        private bool IsStatusCommand() =>
+            string.Equals(_command.Trim(), ConsoleConstants.Status, StringComparison.OrdinalIgnoreCase);
         private bool IsAutoDraftCommand() =>
             string.Equals(_command.Trim(), ConsoleConstants.AutoDraft, StringComparison.OrdinalIgnoreCase);
         private bool IsBackCommand() =>
@@ -550,6 +585,23 @@ namespace ConsoleApp.Objects
             AdvanceReplayPlayback();
         }
 
+        private void HandleWeekSimulationPreparation()
+        {
+            if (Console.KeyAvailable)
+            {
+                HandleInteractiveKey(Console.ReadKey(intercept: true), allowReplayHotkeys: false);
+                return;
+            }
+
+            if (TryRefreshWeekSimulationSession())
+            {
+                _screenRenderer.Render(_currentScreenModel, _command);
+                return;
+            }
+
+            Thread.Sleep(ReplayPollDelay);
+        }
+
         private bool TryHandleReplayHotkey(ConsoleKeyInfo key)
         {
             string? command = key.Key switch
@@ -596,6 +648,9 @@ namespace ConsoleApp.Objects
             && _matchPresentationState.PresentedMatch is not null
             && _matchPresentationState.LiveReplay.PlaybackState == ReplayPlaybackState.Playing;
 
+        private bool IsWeekSimulationRunning() =>
+            _weekSimulationSession?.Status == WeekSimulationStatus.Running;
+
         private string ContinueMatchFlow()
         {
             if (_world is null)
@@ -608,6 +663,7 @@ namespace ConsoleApp.Objects
                 ScreenKind.MatchPreview => RenderDraft(),
                 ScreenKind.Draft => AutoDraft(),
                 ScreenKind.DraftSummary => StartLiveReplay(),
+                ScreenKind.ReplayPreparation => RenderReplayPreparation("Replay is still preparing."),
                 ScreenKind.LiveReplay => StepReplay(),
                 ScreenKind.RoundSummary => NextRound(),
                 ScreenKind.MatchSummary => CompleteMatchFlow(),
@@ -898,6 +954,12 @@ namespace ConsoleApp.Objects
 
         private string PlayReplay()
         {
+            if (_weekSimulationSession?.Status == WeekSimulationStatus.Running)
+            {
+                _weekSimulationSession.AutoPlayRequested = true;
+                return RenderReplayPreparation("Replay will begin when preparation completes.");
+            }
+
             if (_matchPresentationState.PresentedMatch is null)
             {
                 return RenderCurrentScreen("No active replay.");
@@ -910,7 +972,7 @@ namespace ConsoleApp.Objects
                 return TransitionAfterReplayComplete("Round replay complete.");
             }
 
-            _replayPlaybackStartedAtUtc = DateTime.UtcNow - _matchPresentationState.LiveReplay.CurrentPlaybackTime;
+            ResetReplayPlaybackClockAnchor();
             _matchPresentationState.LiveReplay.PlaybackState = ReplayPlaybackState.Playing;
             ScheduleNextReplayAdvance(immediate: true);
             return ViewLiveReplay();
@@ -918,6 +980,12 @@ namespace ConsoleApp.Objects
 
         private string PauseReplay()
         {
+            if (_weekSimulationSession?.Status == WeekSimulationStatus.Running)
+            {
+                _weekSimulationSession.AutoPlayRequested = false;
+                return RenderReplayPreparation("Replay will stay paused when preparation completes.");
+            }
+
             if (_matchPresentationState.PresentedMatch is null)
             {
                 return RenderCurrentScreen("No active replay.");
@@ -935,6 +1003,11 @@ namespace ConsoleApp.Objects
                 return RenderCurrentScreen("No active replay.");
             }
 
+            if (_matchPresentationState.LiveReplay.PlaybackState == ReplayPlaybackState.Playing)
+            {
+                UpdateReplayPlaybackClock();
+            }
+
             _matchPresentationState.LiveReplay.ReplaySpeed = _matchPresentationState.LiveReplay.ReplaySpeed switch
             {
                 ReplaySpeed.Slow => ReplaySpeed.Normal,
@@ -945,6 +1018,7 @@ namespace ConsoleApp.Objects
 
             if (_matchPresentationState.LiveReplay.PlaybackState == ReplayPlaybackState.Playing)
             {
+                ResetReplayPlaybackClockAnchor();
                 ScheduleNextReplayAdvance(immediate: false);
             }
 
@@ -958,6 +1032,11 @@ namespace ConsoleApp.Objects
                 return RenderCurrentScreen("No active replay.");
             }
 
+            if (_matchPresentationState.LiveReplay.PlaybackState == ReplayPlaybackState.Playing)
+            {
+                UpdateReplayPlaybackClock();
+            }
+
             _matchPresentationState.LiveReplay.ReplaySpeed = _matchPresentationState.LiveReplay.ReplaySpeed switch
             {
                 ReplaySpeed.VeryFast => ReplaySpeed.Fast,
@@ -968,6 +1047,7 @@ namespace ConsoleApp.Objects
 
             if (_matchPresentationState.LiveReplay.PlaybackState == ReplayPlaybackState.Playing)
             {
+                ResetReplayPlaybackClockAnchor();
                 ScheduleNextReplayAdvance(immediate: false);
             }
 
@@ -1000,12 +1080,12 @@ namespace ConsoleApp.Objects
             if (_matchPresentationState.LiveReplay.PlaybackState == ReplayPlaybackState.Complete)
             {
                 TransitionAfterReplayComplete();
-                _screenRenderer.Render(_currentScreenModel, _command);
+                RenderCurrentModelToConsole(forceLiveFrame: true);
                 return;
             }
 
             ViewLiveReplay();
-            _screenRenderer.Render(_currentScreenModel, _command);
+            RenderCurrentModelToConsole();
             ScheduleNextReplayAdvance(immediate: false);
         }
 
@@ -1018,7 +1098,15 @@ namespace ConsoleApp.Objects
 
             _matchPresentationState.LiveReplay.CurrentPlaybackTime = _replayPlaybackStartedAtUtc == DateTime.MinValue
                 ? TimeSpan.Zero
-                : DateTime.UtcNow - _replayPlaybackStartedAtUtc;
+                : _replayPlaybackStartedFrom
+                    + TimeSpan.FromTicks((long)((DateTime.UtcNow - _replayPlaybackStartedAtUtc).Ticks
+                        * GetReplaySpeedMultiplier(_matchPresentationState.LiveReplay.ReplaySpeed)));
+        }
+
+        private void ResetReplayPlaybackClockAnchor()
+        {
+            _replayPlaybackStartedFrom = _matchPresentationState.LiveReplay.CurrentPlaybackTime;
+            _replayPlaybackStartedAtUtc = DateTime.UtcNow;
         }
 
         private bool TryAdvanceReplayToCurrentTime()
@@ -1112,6 +1200,58 @@ namespace ConsoleApp.Objects
                 ReplaySpeed.VeryFast => TimeSpan.FromMilliseconds(150),
                 _ => TimeSpan.FromMilliseconds(900)
             };
+
+        private static double GetReplaySpeedMultiplier(ReplaySpeed replaySpeed) =>
+            replaySpeed switch
+            {
+                ReplaySpeed.Slow => 0.5,
+                ReplaySpeed.Fast => 2.0,
+                ReplaySpeed.VeryFast => 4.0,
+                _ => 1.0
+            };
+
+        private void RenderCurrentModelToConsole(bool forceLiveFrame = false)
+        {
+            if (IsLiveReplayPlaying())
+            {
+                RenderLiveReplayFrame(forceLiveFrame);
+                return;
+            }
+
+            RestoreConsoleCursor();
+            _consoleFrameRenderer.Reset();
+            _screenRenderer.Render(_currentScreenModel, _command);
+        }
+
+        private void RenderLiveReplayFrame(bool force)
+        {
+            DateTime now = DateTime.UtcNow;
+            if (!force && now < _nextLiveReplayRenderAtUtc)
+            {
+                return;
+            }
+
+            _nextLiveReplayRenderAtUtc = now.Add(LiveReplayRenderInterval);
+            _consoleFrameRenderer.SetCursorVisible(false);
+            ConsoleFrame frame = _screenRenderer.BuildFrame(
+                _currentScreenModel,
+                _consoleFrameRenderer.Width,
+                _consoleFrameRenderer.Height,
+                _command);
+
+            if (force)
+            {
+                _consoleFrameRenderer.ForceRender(frame);
+                return;
+            }
+
+            _consoleFrameRenderer.Render(frame);
+        }
+
+        private void RestoreConsoleCursor()
+        {
+            _consoleFrameRenderer.SetCursorVisible(true);
+        }
 
         private string RenderRoundSummary(string? message = null)
         {
@@ -1569,6 +1709,11 @@ namespace ConsoleApp.Objects
                 return RenderCurrentScreen("No world has been created yet. Use `start` to begin a new game.");
             }
 
+            if (_weekSimulationSession?.Status == WeekSimulationStatus.Running)
+            {
+                return RenderReplayPreparation("A match simulation is already preparing.");
+            }
+
             Team humanTeam = GetHumanTeam(_world);
             League league = GetTeamLeague(_world, humanTeam);
             ScheduledMatch? match = GetCurrentWeekHumanMatch(_world, humanTeam);
@@ -1581,9 +1726,166 @@ namespace ConsoleApp.Objects
             _pendingMatch = match;
             _matchPresentationState.Clear();
             _matchPresentationState.ScheduledMatch = match;
-            _screenNavigationState.NavigateTo(ScreenKind.MatchPreview);
-            _currentScreenModel = BuildMatchPreviewScreen(_world, humanTeam, league, match);
+            _weekSimulationSession = StartWeekSimulationSession(_world, humanTeam.Id, match);
+            _screenNavigationState.NavigateTo(ScreenKind.ReplayPreparation);
+            _currentScreenModel = BuildReplayPreparationScreen(_world, humanTeam, league, match);
             return _screenRenderer.RenderToString(_currentScreenModel);
+        }
+
+        private WeekSimulationSession StartWeekSimulationSession(
+            WorldState world,
+            string humanTeamId,
+            ScheduledMatch scheduledMatch)
+        {
+            CancellationTokenSource cancellationTokenSource = new();
+            Task<WeekSimulationResult> task = Task.Run(
+                () => ResolveWeekSimulation(world, humanTeamId, scheduledMatch, cancellationTokenSource.Token),
+                cancellationTokenSource.Token);
+            return new WeekSimulationSession(task, cancellationTokenSource);
+        }
+
+        private WeekSimulationResult ResolveWeekSimulation(
+            WorldState world,
+            string humanTeamId,
+            ScheduledMatch scheduledMatch,
+            CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            int resolvedWeek = world.Season.CurrentWeek;
+            SeasonProgressionResult result = _seasonProgressionService.ResolveCurrentWeek(world);
+            cancellationToken.ThrowIfCancellationRequested();
+            MatchResult? humanResult = result.MatchResults
+                .FirstOrDefault(matchResult => IsHumanMatch(matchResult, humanTeamId, result.World));
+
+            return new WeekSimulationResult
+            {
+                AllMatchResults = result.MatchResults,
+                HumanMatchResult = humanResult,
+                ResolvedWeek = resolvedWeek,
+                ScheduledMatch = scheduledMatch,
+                World = result.World
+            };
+        }
+
+        private bool TryRefreshWeekSimulationSession()
+        {
+            if (_weekSimulationSession is null)
+            {
+                return false;
+            }
+
+            _weekSimulationSession.Update();
+            if (_weekSimulationSession.Status == WeekSimulationStatus.Running)
+            {
+                return false;
+            }
+
+            WeekSimulationSession session = _weekSimulationSession;
+            _weekSimulationSession = null;
+
+            if (session.Status == WeekSimulationStatus.Completed && session.Result is not null)
+            {
+                ApplyWeekSimulationResult(session.Result, session.AutoPlayRequested);
+                return true;
+            }
+
+            _pendingMatch = null;
+            _matchPresentationState.Clear();
+            string message = session.Status == WeekSimulationStatus.Cancelled
+                ? "Replay preparation was cancelled."
+                : "Replay preparation failed. The match was not applied.";
+            _currentScreenModel = BuildCurrentScreen(message);
+            return true;
+        }
+
+        private void ApplyWeekSimulationResult(WeekSimulationResult result, bool autoPlayRequested)
+        {
+            _world = result.World;
+            _pendingMatch = null;
+
+            if (result.HumanMatchResult is null)
+            {
+                _matchPresentationState.Clear();
+                _screenNavigationState.ResetTo(ScreenKind.Home);
+                _currentScreenModel = BuildHomeScreen(
+                    _world,
+                    GetHumanTeam(_world),
+                    GetTeamLeague(_world, GetHumanTeam(_world)),
+                    $"Resolved week {result.ResolvedWeek}: Your team did not have a scheduled match.");
+                return;
+            }
+
+            _matchPresentationState.PresentedMatch = _replayPresenter.Present(
+                result.HumanMatchResult,
+                ChampionCatalog.GetDefaultChampions(),
+                teamId => FormatTeamName(_world, teamId));
+            _matchReviewStore.LastMatch = _matchReviewFactory.Create(
+                _matchPresentationState.PresentedMatch,
+                result.ResolvedWeek,
+                teamId => FormatTeamName(_world, teamId));
+            _matchPresentationState.ScheduledMatch = result.ScheduledMatch;
+            _matchPresentationState.RoundIndex = 0;
+            _matchPresentationState.LiveReplay.Reset();
+            RevealMessagesThroughCurrentPlaybackTime();
+            _screenNavigationState.CurrentScreen = ScreenKind.LiveReplay;
+
+            if (autoPlayRequested)
+            {
+                ResetReplayPlaybackClockAnchor();
+                _matchPresentationState.LiveReplay.PlaybackState = ReplayPlaybackState.Playing;
+                ScheduleNextReplayAdvance(immediate: true);
+            }
+
+            Team humanTeam = GetHumanTeam(_world);
+            League league = GetTeamLeague(_world, humanTeam);
+            _currentScreenModel = BuildLiveReplayScreen(
+                _world,
+                humanTeam,
+                league,
+                _matchPresentationState,
+                autoPlayRequested ? "Replay is live." : "Replay ready.");
+        }
+
+        private void RevealMessagesThroughCurrentPlaybackTime()
+        {
+            if (_matchPresentationState.PresentedMatch is null)
+            {
+                return;
+            }
+
+            PresentedRound round = _matchPresentationState.PresentedMatch.Rounds[_matchPresentationState.RoundIndex];
+            _matchPresentationState.LiveReplay.CurrentEventIndex = round.Messages
+                .Count(message => message.Timestamp <= _matchPresentationState.LiveReplay.CurrentPlaybackTime);
+        }
+
+        private string RenderReplayPreparation(string? message = null)
+        {
+            if (_world is null)
+            {
+                return RenderCurrentScreen(message);
+            }
+
+            Team humanTeam = GetHumanTeam(_world);
+            League league = GetTeamLeague(_world, humanTeam);
+            ScheduledMatch? match = _matchPresentationState.ScheduledMatch ?? _pendingMatch ?? GetCurrentWeekHumanMatch(_world, humanTeam);
+            if (match is null)
+            {
+                return RenderCurrentScreen(message);
+            }
+
+            _screenNavigationState.CurrentScreen = ScreenKind.ReplayPreparation;
+            _currentScreenModel = BuildReplayPreparationScreen(_world, humanTeam, league, match, message);
+            return _screenRenderer.RenderToString(_currentScreenModel);
+        }
+
+        private string RenderStatus()
+        {
+            if (_weekSimulationSession?.Status == WeekSimulationStatus.Running)
+            {
+                return RenderReplayPreparation("Replay preparation is still running.");
+            }
+
+            return RenderCurrentScreen("No background match simulation is running.");
         }
 
         private string RenderDraft(string? message = null)
@@ -1679,6 +1981,8 @@ namespace ConsoleApp.Objects
                 ScreenKind.ChampionCatalog => BuildChampionCatalogScreen(_world, _championCatalogFilter, message),
                 ScreenKind.ChampionDetail when _selectedChampion is not null =>
                     BuildChampionDetailScreen(_world, _selectedChampion, message),
+                ScreenKind.ReplayPreparation when _matchPresentationState.ScheduledMatch is not null =>
+                    BuildReplayPreparationScreen(_world, humanTeam, league, _matchPresentationState.ScheduledMatch, message),
                 ScreenKind.LastMatchReview when _matchReviewStore.LastMatch is not null =>
                     BuildLastMatchReviewScreen(_world, _matchReviewStore.LastMatch, message),
                 ScreenKind.RoundList when _matchReviewStore.LastMatch is not null =>
@@ -2011,6 +2315,44 @@ namespace ConsoleApp.Objects
             };
         }
 
+        private static ScreenRenderModel BuildReplayPreparationScreen(
+            WorldState world,
+            Team humanTeam,
+            League league,
+            ScheduledMatch match,
+            string? message = null)
+        {
+            string blueTeamName = FormatTeamName(world, match.HomeTeamId);
+            string redTeamName = FormatTeamName(world, match.AwayTeamId);
+
+            return new ScreenRenderModel
+            {
+                Commands =
+                [
+                    ConsoleConstants.Play,
+                    ConsoleConstants.Pause,
+                    ConsoleConstants.Status,
+                    ConsoleConstants.Help,
+                    ConsoleConstants.QuitReplay
+                ],
+                ContentLines =
+                [
+                    "Preparing live replay...",
+                    $"Resolving Season {world.Season.Year}, Week {world.Season.CurrentWeek}...",
+                    $"{blueTeamName} vs {redTeamName}",
+                    $"Week {match.Week} | {FormatMatchType(match.MatchType)} | Best of {match.BestOf}",
+                    string.Empty,
+                    "The match and the rest of the week are simulating in the background.",
+                    "Replay messages will reveal from their timestamps once preparation completes.",
+                    string.Empty,
+                    "Commands: play, pause, status, help, quit replay"
+                ],
+                Header = BuildHeader(world, humanTeam, league),
+                Message = message,
+                Title = "Live Replay"
+            };
+        }
+
         private static ScreenRenderModel BuildDraftScreen(
             WorldState world,
             Team humanTeam,
@@ -2193,8 +2535,8 @@ namespace ConsoleApp.Objects
                     $"Round winner: {FormatTeamName(world, round.Result.WinningTeamId)}",
                     $"Final round score: {FormatTeamName(world, round.Result.WinningTeamId)} wins",
                     "Duration: 05:00",
-                    $"Blue team score: {FormatTeamName(world, round.Result.BlueTeamId)}",
-                    $"Red team score: {FormatTeamName(world, round.Result.RedTeamId)}",
+                    $"Blue team: {FormatTeamName(world, round.Result.BlueTeamId)}",
+                    $"Red team: {FormatTeamName(world, round.Result.RedTeamId)}",
                     string.Empty,
                     "Champion stats",
                     .. FormatRoundChampionSummary(world, round.Result),
@@ -2235,7 +2577,8 @@ namespace ConsoleApp.Objects
                 ContentLines =
                 [
                     $"Match winner: {FormatTeamName(world, result.WinningTeamId)}",
-                    $"Final match score: {result.BlueRoundWins}-{result.RedRoundWins}",
+                    $"Final match score: {FormatTeamName(world, result.BlueTeamId)} {result.BlueRoundWins} - "
+                    + $"{FormatTeamName(world, result.RedTeamId)} {result.RedRoundWins}",
                     string.Empty,
                     "Round results",
                     .. result.RoundResults
@@ -2560,7 +2903,7 @@ namespace ConsoleApp.Objects
             [
                 $"Week {match.WeekNumber} | {match.MatchType} | {match.BestOfLabel}",
                 string.Empty,
-                $"{match.WinnerTeamName} defeated {GetLosingTeamName(match)} {match.BlueRoundWins}-{match.RedRoundWins}",
+                $"{match.WinnerTeamName} defeated {GetLosingTeamName(match)} {FormatWinnerLoserScore(match)}",
                 string.Empty,
                 "Round Results",
                 "Round   Winner                    Score"
@@ -3174,6 +3517,7 @@ namespace ConsoleApp.Objects
                 ScreenKind.Playoffs => "Playoff Picture",
                 ScreenKind.Schedule => "Schedule",
                 ScreenKind.MatchPreview => "Match Preview",
+                ScreenKind.ReplayPreparation => "Replay Preparation",
                 ScreenKind.Draft => "Draft",
                 ScreenKind.DraftSummary => "Draft Summary",
                 ScreenKind.LiveReplay => "Live Replay",
@@ -3225,6 +3569,7 @@ namespace ConsoleApp.Objects
                 ScreenKind.Playoffs => [ConsoleConstants.Home, ConsoleConstants.ShowLeague, ConsoleConstants.ShowSchedule, ConsoleConstants.Back, ConsoleConstants.Help],
                 ScreenKind.Schedule => ["show team <team name>", ConsoleConstants.ShowOpponent, ConsoleConstants.ShowPlayoffs, ConsoleConstants.StartMatch, ConsoleConstants.Home, ConsoleConstants.Back, ConsoleConstants.Help],
                 ScreenKind.MatchPreview => [ConsoleConstants.ShowOpponent, ConsoleConstants.ShowTeam, "show team <team name>", "show player <player name>", ConsoleConstants.Continue, ConsoleConstants.Cancel, ConsoleConstants.Help],
+                ScreenKind.ReplayPreparation => [ConsoleConstants.Play, ConsoleConstants.Pause, ConsoleConstants.Status, ConsoleConstants.Help, ConsoleConstants.QuitReplay],
                 ScreenKind.LiveReplay => ["show champion <name>", "show player <player name>", "show team <team name>", ConsoleConstants.ShowOpponent, ConsoleConstants.Home, ConsoleConstants.Back, ConsoleConstants.Help],
                 ScreenKind.RoundSummary => ["show champion <name>", "show player <player name>", "show team <team name>", ConsoleConstants.ShowOpponent, ConsoleConstants.Home, ConsoleConstants.Back, ConsoleConstants.Help],
                 ScreenKind.MatchSummary => ["show player <player name>", "show team <team name>", ConsoleConstants.ShowOpponent, ConsoleConstants.Home, ConsoleConstants.Help],
@@ -3260,7 +3605,7 @@ namespace ConsoleApp.Objects
 
         private static string FormatMatchResultSummary(WorldState world, MatchResult result) =>
             $"{FormatTeamName(world, result.WinningTeamId)} won "
-            + $"{result.BlueRoundWins}-{result.RedRoundWins} over "
+            + $"{FormatWinnerLoserScore(result)} over "
             + $"{FormatTeamName(world, result.LosingTeamId)}.";
 
         private static IReadOnlyList<string> FormatLineup(IReadOnlyList<ChampionDefinition> champions)
@@ -3364,6 +3709,16 @@ namespace ConsoleApp.Objects
             string.Equals(match.WinnerTeamName, match.BlueTeamName, StringComparison.Ordinal)
                 ? match.RedTeamName
                 : match.BlueTeamName;
+
+        private static string FormatWinnerLoserScore(MatchReview match) =>
+            string.Equals(match.WinnerTeamName, match.BlueTeamName, StringComparison.Ordinal)
+                ? $"{match.BlueRoundWins}-{match.RedRoundWins}"
+                : $"{match.RedRoundWins}-{match.BlueRoundWins}";
+
+        private static string FormatWinnerLoserScore(MatchResult result) =>
+            string.Equals(result.WinningTeamId, result.BlueTeamId, StringComparison.Ordinal)
+                ? $"{result.BlueRoundWins}-{result.RedRoundWins}"
+                : $"{result.RedRoundWins}-{result.BlueRoundWins}";
 
         private static IReadOnlyList<ReplayMessage> GetReplayReviewMessages(
             MatchReview match,

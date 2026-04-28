@@ -33,6 +33,68 @@ namespace ConsoleApp.Tests.Presentation
             });
         }
 
+        [Test]
+        public void Present_RedTeamWinsMatch_DisplaysWinnerLoserScoreOrder()
+        {
+            ChampionDefinition blueChampion = CreateChampion("quickshot", "Quickshot");
+            ChampionDefinition redChampion = CreateChampion("stonejaw", "Stonejaw");
+            MatchResult result = CreateMatchResult(blueChampion.Id, redChampion.Id) with
+            {
+                BlueRoundWins = 1,
+                LosingTeamId = "blue-team",
+                RedRoundWins = 2,
+                RoundResults =
+                [
+                    new ManagementRoundResult
+                    {
+                        BlueChampionIds = [blueChampion.Id],
+                        BlueTeamId = "blue-team",
+                        LosingTeamId = "red-team",
+                        RedChampionIds = [redChampion.Id],
+                        RedTeamId = "red-team",
+                        RoundNumber = 1,
+                        WinningTeamId = "blue-team"
+                    },
+                    new ManagementRoundResult
+                    {
+                        BlueChampionIds = [blueChampion.Id],
+                        BlueTeamId = "blue-team",
+                        LosingTeamId = "blue-team",
+                        RedChampionIds = [redChampion.Id],
+                        RedTeamId = "red-team",
+                        RoundNumber = 2,
+                        WinningTeamId = "red-team"
+                    },
+                    new ManagementRoundResult
+                    {
+                        BlueChampionIds = [blueChampion.Id],
+                        BlueTeamId = "blue-team",
+                        LosingTeamId = "blue-team",
+                        RedChampionIds = [redChampion.Id],
+                        RedTeamId = "red-team",
+                        RoundNumber = 3,
+                        WinningTeamId = "red-team"
+                    }
+                ],
+                WinningTeamId = "red-team"
+            };
+
+            PresentedMatch presentedMatch = new ReplayPresenter().Present(
+                result,
+                [blueChampion, redChampion],
+                teamId => teamId == "blue-team" ? "Salt Lake Strikers" : "Boise Barrage");
+
+            IReadOnlyList<string> finalRoundMessages = presentedMatch.Rounds.Last().Messages
+                .Select(message => message.Text)
+                .ToList();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(finalRoundMessages, Has.Some.EqualTo("Boise Barrage wins the match 2-1."));
+                Assert.That(finalRoundMessages, Has.None.EqualTo("Boise Barrage wins the match 1-2."));
+            });
+        }
+
         private static MatchResult CreateMatchResult(string blueChampionId, string redChampionId) =>
             new()
             {

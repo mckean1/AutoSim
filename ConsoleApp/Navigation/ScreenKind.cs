@@ -41,6 +41,11 @@ namespace ConsoleApp.Navigation
         MatchPreview,
 
         /// <summary>
+        /// The live replay preparation screen.
+        /// </summary>
+        ReplayPreparation,
+
+        /// <summary>
         /// The draft screen.
         /// </summary>
         Draft,

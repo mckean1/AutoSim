@@ -8,6 +8,7 @@ namespace ConsoleApp.Constants
         internal const string Prompt = "> ";
         internal const string Start = "start";
         internal const string StartMatch = "start match";
+        internal const string Status = "status";
         internal const string Continue = "continue";
         internal const string Cancel = "cancel";
         internal const string AutoDraft = "auto draft";

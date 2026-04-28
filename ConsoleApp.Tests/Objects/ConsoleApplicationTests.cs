@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using AutoSim.Domain.Enums;
 using AutoSim.Domain.Management.Interfaces;
 using AutoSim.Domain.Management.Models;
@@ -390,13 +391,13 @@ namespace ConsoleApp.Tests.Objects
                 Assert.That(teamOutput, Does.Contain("Roster"));
                 Assert.That(leagueOutput, Does.Contain("Standings"));
                 Assert.That(scheduleOutput, Does.Contain("Scheduled matches"));
-                Assert.That(matchOutput, Does.Contain("Match Preview"));
-                Assert.That(matchOutput, Does.Contain("show champions"));
+                Assert.That(matchOutput, Does.Contain("Preparing live replay..."));
+                Assert.That(matchOutput, Does.Contain("Commands: play | pause | status | help | quit replay"));
             });
         }
 
         [Test]
-        public void ExecuteCommand_StartMatchWithDifferentCasing_RendersMatchPreview()
+        public void ExecuteCommand_StartMatchWithDifferentCasing_RendersReplayPreparation()
         {
             string directory = CreateTempDirectory();
             ConsoleApplication application = new(directory, () => 123, new CountingMatchEngineWrapper());
@@ -404,7 +405,86 @@ namespace ConsoleApp.Tests.Objects
 
             string output = application.ExecuteCommand("Start Match");
 
-            Assert.That(output, Does.Contain("Match Preview"));
+            Assert.That(output, Does.Contain("Preparing live replay..."));
+        }
+
+        [Test]
+        public void ExecuteCommand_StartMatchWithSlowSimulation_RendersPreparationWithoutBlocking()
+        {
+            string directory = CreateTempDirectory();
+            BlockingMatchEngineWrapper matchEngineWrapper = new();
+            ConsoleApplication application = new(directory, () => 123, matchEngineWrapper);
+            CompleteNewGameSetup(application);
+            Stopwatch stopwatch = Stopwatch.StartNew();
+
+            string output = application.ExecuteCommand("start match");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(stopwatch.Elapsed, Is.LessThan(TimeSpan.FromMilliseconds(500)));
+                Assert.That(output, Does.Contain("Preparing live replay..."));
+                Assert.That(output, Does.Contain("Resolving Season 1, Week 1..."));
+            });
+
+            matchEngineWrapper.Release();
+        }
+
+        [Test]
+        public void ExecuteCommand_PlayWhileReplayPreparationIsRunning_RequestsAutoPlayWithoutBlocking()
+        {
+            string directory = CreateTempDirectory();
+            BlockingMatchEngineWrapper matchEngineWrapper = new();
+            ConsoleApplication application = new(directory, () => 123, matchEngineWrapper);
+            CompleteNewGameSetup(application);
+            application.ExecuteCommand("start match");
+            Assert.That(matchEngineWrapper.WaitUntilStarted(), Is.True);
+            Stopwatch stopwatch = Stopwatch.StartNew();
+
+            string output = application.ExecuteCommand("play");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(stopwatch.Elapsed, Is.LessThan(TimeSpan.FromMilliseconds(500)));
+                Assert.That(output, Does.Contain("Replay will begin when preparation completes."));
+            });
+
+            matchEngineWrapper.Release();
+            string replayOutput = WaitForLiveReplay(application);
+            Assert.That(replayOutput, Does.Contain("Playing"));
+        }
+
+        [Test]
+        public void ExecuteCommand_CompletedPreparationWithoutAutoPlay_RendersPausedReplay()
+        {
+            string directory = CreateTempDirectory();
+            ConsoleApplication application = new(directory, () => 123, new CountingMatchEngineWrapper());
+            CompleteNewGameSetup(application);
+            application.ExecuteCommand("start match");
+
+            string output = WaitForLiveReplay(application);
+
+            Assert.That(output, Does.Contain("Paused"));
+        }
+
+        [Test]
+        public void ExecuteCommand_StartMatchWhilePreparationIsRunning_DoesNotStartDuplicateSimulation()
+        {
+            string directory = CreateTempDirectory();
+            BlockingMatchEngineWrapper matchEngineWrapper = new();
+            ConsoleApplication application = new(directory, () => 123, matchEngineWrapper);
+            CompleteNewGameSetup(application);
+            application.ExecuteCommand("start match");
+            Assert.That(matchEngineWrapper.WaitUntilStarted(), Is.True);
+
+            string output = application.ExecuteCommand("start match");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(output, Does.Contain("A match simulation is already preparing."));
+                Assert.That(matchEngineWrapper.CallCount, Is.EqualTo(1));
+            });
+
+            matchEngineWrapper.Release();
         }
 
         [Test]
@@ -429,16 +509,13 @@ namespace ConsoleApp.Tests.Objects
             CountingMatchEngineWrapper matchEngineWrapper = new();
             ConsoleApplication application = new(directory, () => 123, matchEngineWrapper);
             CompleteNewGameSetup(application);
-            application.ExecuteCommand("start match");
-            string draftOutput = application.ExecuteCommand("continue");
-            string draftSummaryOutput = application.ExecuteCommand("auto draft");
 
-            string replayOutput = application.ExecuteCommand("continue");
+            string preparingOutput = application.ExecuteCommand("start match");
+            string replayOutput = WaitForLiveReplay(application);
 
             Assert.Multiple(() =>
             {
-                Assert.That(draftOutput, Does.Contain("Draft"));
-                Assert.That(draftSummaryOutput, Does.Contain("Draft Summary"));
+                Assert.That(preparingOutput, Does.Contain("Preparing live replay..."));
                 Assert.That(matchEngineWrapper.CallCount, Is.GreaterThan(0));
                 Assert.That(replayOutput, Does.Contain("Live Replay"));
                 Assert.That(replayOutput, Does.Contain("Recent Events"));
@@ -453,16 +530,12 @@ namespace ConsoleApp.Tests.Objects
             CompleteNewGameSetup(application);
 
             application.ExecuteCommand("start match");
-            application.ExecuteCommand("continue");
-            application.ExecuteCommand("auto draft");
-            application.ExecuteCommand("continue");
+            WaitForLiveReplay(application);
             application.ExecuteCommand("skip");
             string firstOutput = application.ExecuteCommand("match summary");
             application.ExecuteCommand("continue");
             application.ExecuteCommand("start match");
-            application.ExecuteCommand("continue");
-            application.ExecuteCommand("auto draft");
-            string secondOutput = application.ExecuteCommand("continue");
+            string secondOutput = WaitForLiveReplay(application);
 
             Assert.Multiple(() =>
             {
@@ -478,9 +551,7 @@ namespace ConsoleApp.Tests.Objects
             ConsoleApplication application = new(directory, () => 123, new CountingMatchEngineWrapper());
             CompleteNewGameSetup(application);
             application.ExecuteCommand("start match");
-            application.ExecuteCommand("continue");
-            application.ExecuteCommand("auto draft");
-            application.ExecuteCommand("continue");
+            WaitForLiveReplay(application);
 
             string output = application.ExecuteCommand("step");
 
@@ -500,10 +571,8 @@ namespace ConsoleApp.Tests.Objects
             ConsoleApplication application = new(directory, () => 123, new CountingMatchEngineWrapper());
             CompleteNewGameSetup(application);
             application.ExecuteCommand("start match");
-            application.ExecuteCommand("continue");
-            application.ExecuteCommand("auto draft");
 
-            string output = application.ExecuteCommand("continue");
+            string output = WaitForLiveReplay(application);
 
             Assert.Multiple(() =>
             {
@@ -519,13 +588,85 @@ namespace ConsoleApp.Tests.Objects
             ConsoleApplication application = new(directory, () => 123, new CountingMatchEngineWrapper());
             CompleteNewGameSetup(application);
             application.ExecuteCommand("start match");
-            application.ExecuteCommand("continue");
-            application.ExecuteCommand("auto draft");
-            application.ExecuteCommand("continue");
+            WaitForLiveReplay(application);
 
             string output = application.ExecuteCommand("step");
 
             Assert.That(output, Does.Contain("Round 1 | 00:18 / 05:00"));
+        }
+
+        [Test]
+        public void ExecuteCommand_LiveReplayRecentEvents_ShowsNewestRevealedMessagesFirst()
+        {
+            string directory = CreateTempDirectory();
+            ConsoleApplication application = new(directory, () => 123, new CountingMatchEngineWrapper());
+            CompleteNewGameSetup(application);
+            application.ExecuteCommand("start match");
+            WaitForLiveReplay(application);
+            application.ExecuteCommand("step");
+
+            string output = application.ExecuteCommand("step");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(output.IndexOf("00:42", StringComparison.Ordinal), Is.LessThan(output.IndexOf("00:18", StringComparison.Ordinal)));
+                Assert.That(output.IndexOf("00:18", StringComparison.Ordinal), Is.LessThan(output.IndexOf("00:00", StringComparison.Ordinal)));
+            });
+        }
+
+        [Test]
+        public void ExecuteCommand_PauseReplay_PreservesCurrentPlaybackTime()
+        {
+            string directory = CreateTempDirectory();
+            ConsoleApplication application = new(directory, () => 123, new CountingMatchEngineWrapper());
+            CompleteNewGameSetup(application);
+            application.ExecuteCommand("start match");
+            WaitForLiveReplay(application);
+            application.ExecuteCommand("step");
+
+            string output = application.ExecuteCommand("pause");
+
+            Assert.That(output, Does.Contain("Round 1 | 00:18 / 05:00"));
+        }
+
+        [Test]
+        public void ExecuteCommand_FasterAndSlower_AdjustReplaySpeed()
+        {
+            string directory = CreateTempDirectory();
+            ConsoleApplication application = new(directory, () => 123, new CountingMatchEngineWrapper());
+            CompleteNewGameSetup(application);
+            application.ExecuteCommand("start match");
+            WaitForLiveReplay(application);
+            application.ExecuteCommand("play");
+
+            string fasterOutput = application.ExecuteCommand("faster");
+            string slowerOutput = application.ExecuteCommand("slower");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(fasterOutput, Does.Contain("Speed: Fast"));
+                Assert.That(slowerOutput, Does.Contain("Speed: Normal"));
+            });
+        }
+
+        [Test]
+        public void ExecuteCommand_StartMatch_ResolvesExactlyOneWeekAndIncludesAiMatches()
+        {
+            string directory = CreateTempDirectory();
+            CountingMatchEngineWrapper matchEngineWrapper = new();
+            ConsoleApplication application = new(directory, () => 123, matchEngineWrapper);
+            CompleteNewGameSetup(application);
+            application.ExecuteCommand("start match");
+
+            string replayOutput = WaitForLiveReplay(application);
+            string scheduleOutput = application.ExecuteCommand("show schedule");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(replayOutput, Does.Contain("Recent Events"));
+                Assert.That(scheduleOutput, Does.Contain("Current week: 2"));
+                Assert.That(matchEngineWrapper.CallCount, Is.GreaterThan(1));
+            });
         }
 
         [Test]
@@ -535,9 +676,7 @@ namespace ConsoleApp.Tests.Objects
             ConsoleApplication application = new(directory, () => 123, new CountingMatchEngineWrapper());
             CompleteNewGameSetup(application);
             application.ExecuteCommand("start match");
-            application.ExecuteCommand("continue");
-            application.ExecuteCommand("auto draft");
-            application.ExecuteCommand("continue");
+            WaitForLiveReplay(application);
 
             string roundSummary = application.ExecuteCommand("skip");
             string matchSummary = application.ExecuteCommand("match summary");
@@ -548,6 +687,49 @@ namespace ConsoleApp.Tests.Objects
                 Assert.That(roundSummary, Does.Contain("Key moments"));
                 Assert.That(matchSummary, Does.Contain("Match Summary"));
                 Assert.That(matchSummary, Does.Contain("Final match score:"));
+            });
+        }
+
+        [Test]
+        public void ExecuteCommand_SkipReplay_RoundSummaryLabelsTeamNamesAsTeams()
+        {
+            string directory = CreateTempDirectory();
+            ConsoleApplication application = new(directory, () => 123, new CountingMatchEngineWrapper());
+            CompleteNewGameSetup(application);
+            application.ExecuteCommand("start match");
+            WaitForLiveReplay(application);
+
+            string output = application.ExecuteCommand("skip");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(output, Does.Contain("Blue team:"));
+                Assert.That(output, Does.Contain("Red team:"));
+                Assert.That(output, Does.Not.Contain("Blue team score:"));
+                Assert.That(output, Does.Not.Contain("Red team score:"));
+            });
+        }
+
+        [Test]
+        public void ExecuteCommand_LongContent_TruncatesWithoutMojibakeOrOverwideLines()
+        {
+            string directory = CreateTempDirectory();
+            ConsoleApplication application = new(directory, () => 123);
+            CompleteNewGameSetup(
+                application,
+                "Coach With An Exceptionally Verbose Name",
+                "Salt Lake Strikers With An Exceptionally Verbose Club Name");
+
+            string output = application.ExecuteCommand("show schedule");
+            IReadOnlyList<string> lines = output
+                .Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries)
+                .ToList();
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(output, Does.Not.Contain("\u00E2"));
+                Assert.That(output, Does.Not.Contain("\u00C3"));
+                Assert.That(lines, Is.All.Length.LessThanOrEqualTo(80));
             });
         }
 
@@ -1020,18 +1202,17 @@ namespace ConsoleApp.Tests.Objects
         }
 
         [Test]
-        public void ExecuteCommand_BackFromChampionDetailOpenedFromDraft_ReturnsDraft()
+        public void ExecuteCommand_BackFromChampionDetailOpenedFromReplayPreparation_ReturnsPreparation()
         {
             string directory = CreateTempDirectory();
             ConsoleApplication application = new(directory, () => 123, new CountingMatchEngineWrapper());
             CompleteNewGameSetup(application);
             application.ExecuteCommand("start match");
-            application.ExecuteCommand("continue");
             application.ExecuteCommand("show champion quickshot");
 
             string output = application.ExecuteCommand("back");
 
-            Assert.That(output, Does.Contain("Draft"));
+            Assert.That(output, Does.Contain("Preparing live replay..."));
         }
 
         [Test]
@@ -1213,12 +1394,30 @@ namespace ConsoleApp.Tests.Objects
             ConsoleApplication application = new(directory, () => 123, new CountingMatchEngineWrapper());
             CompleteNewGameSetup(application);
             application.ExecuteCommand("start match");
-            application.ExecuteCommand("continue");
-            application.ExecuteCommand("auto draft");
-            application.ExecuteCommand("continue");
+            WaitForLiveReplay(application);
             application.ExecuteCommand("skip");
             application.ExecuteCommand("match summary");
             return application;
+        }
+
+        private static string WaitForLiveReplay(ConsoleApplication application)
+        {
+            string output = string.Empty;
+            Stopwatch stopwatch = Stopwatch.StartNew();
+            while (stopwatch.Elapsed < TimeSpan.FromSeconds(5))
+            {
+                output = application.ExecuteCommand("status");
+                if (output.Contains("Recent Events", StringComparison.Ordinal)
+                    || output.Contains("Replay preparation failed", StringComparison.Ordinal))
+                {
+                    return output;
+                }
+
+                Thread.Sleep(10);
+            }
+
+            Assert.Fail($"Timed out waiting for live replay. Last output: {output}");
+            return output;
         }
 
         private static string CompleteNewGameSetup(ConsoleApplication application, string coachName = "Coach Carter", string teamName = "Salt Lake Strikers")
@@ -1255,6 +1454,74 @@ namespace ConsoleApp.Tests.Objects
                 _ = championCatalog;
                 _ = seed;
                 CallCount++;
+                return new MatchResult
+                {
+                    BestOf = match.BestOf,
+                    BlueRoundWins = 2,
+                    BlueTeamId = blueTeam.Id,
+                    LosingTeamId = redTeam.Id,
+                    MatchId = match.Id,
+                    MatchType = match.MatchType,
+                    RedRoundWins = 0,
+                    RedTeamId = redTeam.Id,
+                    RoundResults =
+                    [
+                        new AutoSim.Domain.Management.Models.RoundResult
+                        {
+                            BlueTeamId = blueTeam.Id,
+                            LosingTeamId = redTeam.Id,
+                            RedTeamId = redTeam.Id,
+                            RoundNumber = 1,
+                            WinningTeamId = blueTeam.Id
+                        },
+                        new AutoSim.Domain.Management.Models.RoundResult
+                        {
+                            BlueTeamId = blueTeam.Id,
+                            LosingTeamId = redTeam.Id,
+                            RedTeamId = redTeam.Id,
+                            RoundNumber = 2,
+                            WinningTeamId = blueTeam.Id
+                        }
+                    ],
+                    WinningTeamId = blueTeam.Id
+                };
+            }
+        }
+
+        private sealed class BlockingMatchEngineWrapper : IMatchEngineWrapper
+        {
+            private readonly ManualResetEventSlim _release = new(false);
+            private readonly ManualResetEventSlim _started = new(false);
+            private int _callCount;
+
+            public int CallCount => _callCount;
+
+            public void Release() => _release.Set();
+
+            public bool WaitUntilStarted() => _started.Wait(TimeSpan.FromSeconds(2));
+
+            public MatchResult Resolve(
+                ScheduledMatch match,
+                Team blueTeam,
+                Team redTeam,
+                Coach blueCoach,
+                Coach redCoach,
+                IReadOnlyList<Player> players,
+                IReadOnlyList<ChampionDefinition> championCatalog,
+                int seed)
+            {
+                _ = blueCoach;
+                _ = redCoach;
+                _ = players;
+                _ = championCatalog;
+                _ = seed;
+                int callCount = Interlocked.Increment(ref _callCount);
+                if (callCount == 1)
+                {
+                    _started.Set();
+                    _release.Wait(TimeSpan.FromSeconds(5));
+                }
+
                 return new MatchResult
                 {
                     BestOf = match.BestOf,
