@@ -21,10 +21,12 @@ namespace ConsoleApp.Objects
         private const int RequiredMageCount = 2;
         private const int RequiredMarksmanCount = 2;
         private const int RequiredSupportCount = 2;
+        private static readonly TimeSpan ReplayPollDelay = TimeSpan.FromMilliseconds(25);
 
         private string _command;
         private string _previousCommand;
         private bool _isProcessingCommand;
+        private DateTime _nextReplayAdvanceAtUtc;
         private readonly RoundAnalysisRenderer _roundAnalysisRenderer;
         private readonly AggregateRoundAnalysisRenderer _aggregateRoundAnalysisRenderer;
         private readonly AggregateRoundAnalyzer _aggregateRoundAnalyzer;
@@ -72,6 +74,7 @@ namespace ConsoleApp.Objects
             _command = string.Empty;
             _previousCommand = string.Empty;
             _isProcessingCommand = false;
+            _nextReplayAdvanceAtUtc = DateTime.MinValue;
             _logDirectory = logDirectory;
             _roundAnalysisRenderer = new RoundAnalysisRenderer();
             _aggregateRoundAnalysisRenderer = new AggregateRoundAnalysisRenderer();
@@ -112,22 +115,14 @@ namespace ConsoleApp.Objects
 
             while (true)
             {
-                RenderPrompt();
-                ConsoleKeyInfo key = Console.ReadKey(intercept: true);
-
-                switch (key.Key)
+                if (IsLiveReplayPlaying())
                 {
-                    case ConsoleKey.Enter:
-                        Redraw();
-                        ProcessCommand();
-                        break;
-                    case ConsoleKey.Backspace:
-                        HandleBackspace();
-                        break;
-                    default:
-                        HandleCharacterInput(key);
-                        break;
+                    HandleLiveReplayPlayback();
+                    continue;
                 }
+
+                RenderPrompt();
+                HandleInteractiveKey(Console.ReadKey(intercept: true), allowReplayHotkeys: false);
             }
         }
 
@@ -261,9 +256,29 @@ namespace ConsoleApp.Objects
                 return SkipReplay();
             }
 
-            if (IsPlayCommand() || IsPauseCommand() || IsFasterCommand() || IsSlowerCommand() || IsDetailsCommand())
+            if (IsPlayCommand())
             {
-                return RenderCurrentScreen($"{normalizedCommand} is a replay placeholder for now. Use step or skip.");
+                return PlayReplay();
+            }
+
+            if (IsPauseCommand())
+            {
+                return PauseReplay();
+            }
+
+            if (IsFasterCommand())
+            {
+                return IncreaseReplaySpeed();
+            }
+
+            if (IsSlowerCommand())
+            {
+                return DecreaseReplaySpeed();
+            }
+
+            if (IsDetailsCommand())
+            {
+                return ShowReplayDetails();
             }
 
             if (IsDraftPlaceholderCommand())
@@ -494,6 +509,91 @@ namespace ConsoleApp.Objects
             || _command.Trim().StartsWith("ban ", StringComparison.OrdinalIgnoreCase);
         private void Redraw() => _screenRenderer.Render(_currentScreenModel);
 
+        private void HandleInteractiveKey(ConsoleKeyInfo key, bool allowReplayHotkeys)
+        {
+            if (allowReplayHotkeys && TryHandleReplayHotkey(key))
+            {
+                return;
+            }
+
+            switch (key.Key)
+            {
+                case ConsoleKey.Enter:
+                    Redraw();
+                    ProcessCommand();
+                    break;
+                case ConsoleKey.Backspace:
+                    HandleBackspace();
+                    break;
+                default:
+                    HandleCharacterInput(key);
+                    break;
+            }
+        }
+
+        private void HandleLiveReplayPlayback()
+        {
+            if (Console.KeyAvailable)
+            {
+                HandleInteractiveKey(Console.ReadKey(intercept: true), allowReplayHotkeys: true);
+                return;
+            }
+
+            if (DateTime.UtcNow < _nextReplayAdvanceAtUtc)
+            {
+                Thread.Sleep(ReplayPollDelay);
+                return;
+            }
+
+            AdvanceReplayPlayback();
+        }
+
+        private bool TryHandleReplayHotkey(ConsoleKeyInfo key)
+        {
+            string? command = key.Key switch
+            {
+                ConsoleKey.Spacebar => ConsoleConstants.Pause,
+                ConsoleKey.Add or ConsoleKey.OemPlus => ConsoleConstants.Faster,
+                ConsoleKey.Subtract or ConsoleKey.OemMinus => ConsoleConstants.Slower,
+                _ => key.KeyChar switch
+                {
+                    'p' or 'P' => ConsoleConstants.Pause,
+                    's' or 'S' => ConsoleConstants.Skip,
+                    'q' or 'Q' => ConsoleConstants.QuitReplay,
+                    '?' => ConsoleConstants.Help,
+                    '+' => ConsoleConstants.Faster,
+                    '-' => ConsoleConstants.Slower,
+                    _ => null
+                }
+            };
+
+            if (command is null)
+            {
+                return false;
+            }
+
+            string previousCommand = _command;
+            _command = command;
+            try
+            {
+                ProcessCommand();
+            }
+            finally
+            {
+                if (_inputMode == AppInputMode.Command)
+                {
+                    _command = previousCommand;
+                }
+            }
+
+            return true;
+        }
+
+        private bool IsLiveReplayPlaying() =>
+            _screenNavigationState.CurrentScreen == ScreenKind.LiveReplay
+            && _matchPresentationState.PresentedMatch is not null
+            && _matchPresentationState.LiveReplay.PlaybackState == ReplayPlaybackState.Playing;
+
         private string ContinueMatchFlow()
         {
             if (_world is null)
@@ -561,7 +661,8 @@ namespace ConsoleApp.Objects
                 resolvedWeek,
                 teamId => FormatTeamName(_world, teamId));
             _matchPresentationState.RoundIndex = 0;
-            _matchPresentationState.ReplayIndex = 1;
+            _matchPresentationState.LiveReplay.Reset();
+            _matchPresentationState.LiveReplay.CurrentEventIndex = 1;
             _pendingMatch = null;
 
             League league = GetTeamLeague(_world, GetHumanTeam(_world));
@@ -577,21 +678,13 @@ namespace ConsoleApp.Objects
                 return RenderCurrentScreen("No active replay.");
             }
 
-            PresentedRound round = _matchPresentationState.PresentedMatch.Rounds[_matchPresentationState.RoundIndex];
-            if (_matchPresentationState.ReplayIndex < round.Messages.Count)
+            _matchPresentationState.LiveReplay.PlaybackState = ReplayPlaybackState.Paused;
+            if (!TryAdvanceReplay())
             {
-                _matchPresentationState.ReplayIndex++;
-            }
-            else
-            {
-                return RenderRoundSummary("Round replay complete.");
+                return TransitionAfterReplayComplete("Round replay complete.");
             }
 
-            Team humanTeam = GetHumanTeam(_world);
-            League league = GetTeamLeague(_world, humanTeam);
-            _screenNavigationState.CurrentScreen = ScreenKind.LiveReplay;
-            _currentScreenModel = BuildLiveReplayScreen(_world, humanTeam, league, _matchPresentationState);
-            return _screenRenderer.RenderToString(_currentScreenModel);
+            return ViewLiveReplay();
         }
 
         private string SkipReplay()
@@ -601,11 +694,12 @@ namespace ConsoleApp.Objects
                 return RenderCurrentScreen("No active replay.");
             }
 
-            _matchPresentationState.ReplayIndex = _matchPresentationState.PresentedMatch
+            _matchPresentationState.LiveReplay.PlaybackState = ReplayPlaybackState.Complete;
+            _matchPresentationState.LiveReplay.CurrentEventIndex = _matchPresentationState.PresentedMatch
                 .Rounds[_matchPresentationState.RoundIndex]
                 .Messages
                 .Count;
-            return RenderRoundSummary("Replay skipped to the round result.");
+            return TransitionAfterReplayComplete("Replay skipped to the round result.");
         }
 
         private string NextRound()
@@ -626,7 +720,8 @@ namespace ConsoleApp.Objects
             }
 
             _matchPresentationState.RoundIndex++;
-            _matchPresentationState.ReplayIndex = 1;
+            _matchPresentationState.LiveReplay.Reset();
+            _matchPresentationState.LiveReplay.CurrentEventIndex = 1;
             return ViewLiveReplay();
         }
 
@@ -640,7 +735,7 @@ namespace ConsoleApp.Objects
             return RenderReplayReview();
         }
 
-        private string ViewLiveReplay()
+        private string ViewLiveReplay(string? message = null)
         {
             if (_world is null || _matchPresentationState.PresentedMatch is null)
             {
@@ -650,7 +745,7 @@ namespace ConsoleApp.Objects
             Team humanTeam = GetHumanTeam(_world);
             League league = GetTeamLeague(_world, humanTeam);
             _screenNavigationState.CurrentScreen = ScreenKind.LiveReplay;
-            _currentScreenModel = BuildLiveReplayScreen(_world, humanTeam, league, _matchPresentationState);
+            _currentScreenModel = BuildLiveReplayScreen(_world, humanTeam, league, _matchPresentationState, message);
             return _screenRenderer.RenderToString(_currentScreenModel);
         }
 
@@ -798,6 +893,169 @@ namespace ConsoleApp.Objects
             _matchPresentationState.Clear();
             return RenderHome("Match flow complete.");
         }
+
+        private string PlayReplay()
+        {
+            if (_matchPresentationState.PresentedMatch is null)
+            {
+                return RenderCurrentScreen("No active replay.");
+            }
+
+            PresentedRound round = _matchPresentationState.PresentedMatch.Rounds[_matchPresentationState.RoundIndex];
+            if (_matchPresentationState.LiveReplay.CurrentEventIndex >= round.Messages.Count)
+            {
+                _matchPresentationState.LiveReplay.PlaybackState = ReplayPlaybackState.Complete;
+                return TransitionAfterReplayComplete("Round replay complete.");
+            }
+
+            _matchPresentationState.LiveReplay.PlaybackState = ReplayPlaybackState.Playing;
+            ScheduleNextReplayAdvance(immediate: true);
+            return ViewLiveReplay();
+        }
+
+        private string PauseReplay()
+        {
+            if (_matchPresentationState.PresentedMatch is null)
+            {
+                return RenderCurrentScreen("No active replay.");
+            }
+
+            _matchPresentationState.LiveReplay.PlaybackState = ReplayPlaybackState.Paused;
+            return ViewLiveReplay();
+        }
+
+        private string IncreaseReplaySpeed()
+        {
+            if (_matchPresentationState.PresentedMatch is null)
+            {
+                return RenderCurrentScreen("No active replay.");
+            }
+
+            _matchPresentationState.LiveReplay.ReplaySpeed = _matchPresentationState.LiveReplay.ReplaySpeed switch
+            {
+                ReplaySpeed.Slow => ReplaySpeed.Normal,
+                ReplaySpeed.Normal => ReplaySpeed.Fast,
+                ReplaySpeed.Fast => ReplaySpeed.VeryFast,
+                _ => ReplaySpeed.VeryFast
+            };
+
+            if (_matchPresentationState.LiveReplay.PlaybackState == ReplayPlaybackState.Playing)
+            {
+                ScheduleNextReplayAdvance(immediate: false);
+            }
+
+            return ViewLiveReplay();
+        }
+
+        private string DecreaseReplaySpeed()
+        {
+            if (_matchPresentationState.PresentedMatch is null)
+            {
+                return RenderCurrentScreen("No active replay.");
+            }
+
+            _matchPresentationState.LiveReplay.ReplaySpeed = _matchPresentationState.LiveReplay.ReplaySpeed switch
+            {
+                ReplaySpeed.VeryFast => ReplaySpeed.Fast,
+                ReplaySpeed.Fast => ReplaySpeed.Normal,
+                ReplaySpeed.Normal => ReplaySpeed.Slow,
+                _ => ReplaySpeed.Slow
+            };
+
+            if (_matchPresentationState.LiveReplay.PlaybackState == ReplayPlaybackState.Playing)
+            {
+                ScheduleNextReplayAdvance(immediate: false);
+            }
+
+            return ViewLiveReplay();
+        }
+
+        private string ShowReplayDetails()
+        {
+            if (_matchPresentationState.PresentedMatch is null)
+            {
+                return RenderCurrentScreen("No active replay.");
+            }
+
+            PresentedRound round = _matchPresentationState.PresentedMatch.Rounds[_matchPresentationState.RoundIndex];
+            int revealed = Math.Min(_matchPresentationState.LiveReplay.CurrentEventIndex, round.Messages.Count);
+            return ViewLiveReplay($"Replay details: {revealed} of {round.Messages.Count} events revealed.");
+        }
+
+        private void AdvanceReplayPlayback()
+        {
+            if (_matchPresentationState.PresentedMatch is null)
+            {
+                return;
+            }
+
+            if (!TryAdvanceReplay())
+            {
+                TransitionAfterReplayComplete();
+                _screenRenderer.Render(_currentScreenModel, _command);
+                return;
+            }
+
+            ViewLiveReplay();
+            _screenRenderer.Render(_currentScreenModel, _command);
+            ScheduleNextReplayAdvance(immediate: false);
+        }
+
+        private bool TryAdvanceReplay()
+        {
+            if (_matchPresentationState.PresentedMatch is null)
+            {
+                return false;
+            }
+
+            PresentedRound round = _matchPresentationState.PresentedMatch.Rounds[_matchPresentationState.RoundIndex];
+            if (_matchPresentationState.LiveReplay.CurrentEventIndex >= round.Messages.Count)
+            {
+                _matchPresentationState.LiveReplay.CurrentEventIndex = round.Messages.Count;
+                _matchPresentationState.LiveReplay.PlaybackState = ReplayPlaybackState.Complete;
+                return false;
+            }
+
+            _matchPresentationState.LiveReplay.CurrentEventIndex++;
+            if (_matchPresentationState.LiveReplay.CurrentEventIndex >= round.Messages.Count)
+            {
+                _matchPresentationState.LiveReplay.CurrentEventIndex = round.Messages.Count;
+                _matchPresentationState.LiveReplay.PlaybackState = ReplayPlaybackState.Complete;
+            }
+
+            return true;
+        }
+
+        private string TransitionAfterReplayComplete(string? message = null)
+        {
+            _matchPresentationState.LiveReplay.PlaybackState = ReplayPlaybackState.Complete;
+            _nextReplayAdvanceAtUtc = DateTime.MinValue;
+
+            if (_matchPresentationState.PresentedMatch is null)
+            {
+                return RenderCurrentScreen("No replay is available.");
+            }
+
+            return _matchPresentationState.RoundIndex + 1 < _matchPresentationState.PresentedMatch.Rounds.Count
+                ? RenderRoundSummary(message)
+                : RenderMatchSummary(message ?? "Replay complete.");
+        }
+
+        private void ScheduleNextReplayAdvance(bool immediate)
+        {
+            _nextReplayAdvanceAtUtc = immediate
+                ? DateTime.UtcNow
+                : DateTime.UtcNow.Add(GetReplayDelay(_matchPresentationState.LiveReplay.ReplaySpeed));
+        }
+
+        private static TimeSpan GetReplayDelay(ReplaySpeed replaySpeed) =>
+            replaySpeed switch
+            {
+                ReplaySpeed.Slow => TimeSpan.FromMilliseconds(1500),
+                ReplaySpeed.Fast => TimeSpan.FromMilliseconds(400),
+                ReplaySpeed.VeryFast => TimeSpan.FromMilliseconds(150),
+                _ => TimeSpan.FromMilliseconds(900)
+            };
 
         private string RenderRoundSummary(string? message = null)
         {
@@ -1780,11 +2038,14 @@ namespace ConsoleApp.Objects
         {
             PresentedMatch presentedMatch = state.PresentedMatch!;
             PresentedRound round = presentedMatch.Rounds[state.RoundIndex];
+            LiveReplayState replay = state.LiveReplay;
+            int revealedCount = Math.Min(Math.Max(1, replay.CurrentEventIndex), round.Messages.Count);
             IReadOnlyList<ReplayMessage> visibleMessages = round.Messages
-                .Take(Math.Max(1, state.ReplayIndex))
-                .TakeLast(10)
+                .Take(revealedCount)
+                .Reverse()
+                .Take(replay.VisibleMessageCount)
                 .ToList();
-            ReplayMessage currentMessage = visibleMessages.Last();
+            ReplayMessage currentMessage = round.Messages[Math.Max(0, revealedCount - 1)];
             int blueRoundWins = presentedMatch.Rounds
                 .Take(state.RoundIndex)
                 .Count(presentedRound => string.Equals(
@@ -1796,7 +2057,7 @@ namespace ConsoleApp.Objects
             List<string> lines =
             [
                 $"{FormatTeamName(world, presentedMatch.Result.BlueTeamId)} vs {FormatTeamName(world, presentedMatch.Result.RedTeamId)}",
-                $"Round {round.Result.RoundNumber} | {FormatTimestamp(currentMessage.Timestamp)} / 05:00",
+                $"Round {round.Result.RoundNumber} | {FormatTimestamp(currentMessage.Timestamp)} / 05:00 | {FormatReplayPlaybackState(replay.PlaybackState)} | Speed: {replay.ReplaySpeed}",
                 $"Match score: {blueRoundWins}-{redRoundWins}",
                 $"{FormatTeamName(world, presentedMatch.Result.BlueTeamId)} 0 | {FormatTeamName(world, presentedMatch.Result.RedTeamId)} 0",
                 string.Empty,
@@ -1808,25 +2069,33 @@ namespace ConsoleApp.Objects
             lines.Add("Recent Events");
             lines.AddRange(visibleMessages.Select(FormatReplayMessage));
             lines.Add(string.Empty);
-            lines.Add(state.ReplayIndex >= round.Messages.Count
-                ? "Playback state: round complete"
-                : "Playback state: paused");
+            lines.Add($"Playback state: {FormatReplayPlaybackState(replay.PlaybackState)}");
 
             return new ScreenRenderModel
             {
-                Commands =
-                [
-                    ConsoleConstants.Step,
-                    ConsoleConstants.Play,
-                    ConsoleConstants.Pause,
-                    ConsoleConstants.Skip,
-                    ConsoleConstants.Faster,
-                    ConsoleConstants.Slower,
-                    ConsoleConstants.Details,
-                    ConsoleConstants.ShowChampions,
-                    ConsoleConstants.QuitReplay,
-                    ConsoleConstants.Help
-                ],
+                Commands = replay.PlaybackState == ReplayPlaybackState.Playing
+                    ?
+                    [
+                        "Space/p pause",
+                        "s skip",
+                        "+ faster",
+                        "- slower",
+                        "q quit",
+                        "? help"
+                    ]
+                    :
+                    [
+                        ConsoleConstants.Step,
+                        ConsoleConstants.Play,
+                        ConsoleConstants.Pause,
+                        ConsoleConstants.Skip,
+                        ConsoleConstants.Faster,
+                        ConsoleConstants.Slower,
+                        ConsoleConstants.Details,
+                        ConsoleConstants.ShowChampions,
+                        ConsoleConstants.QuitReplay,
+                        ConsoleConstants.Help
+                    ],
                 ContentLines = lines,
                 Header = BuildHeader(world, humanTeam, league),
                 Message = message,
@@ -2111,11 +2380,11 @@ namespace ConsoleApp.Objects
                 string.Empty,
                 "Replay",
                 "step                  Advance one replay step.",
-                "play                  Replay placeholder command.",
-                "pause                 Replay placeholder command.",
+                "play                  Start live replay playback.",
+                "pause                 Pause live replay playback.",
                 "skip                  Skip to the next replay summary.",
-                "faster                Replay placeholder command.",
-                "slower                Replay placeholder command.",
+                "faster                Increase replay playback speed.",
+                "slower                Decrease replay playback speed.",
                 "next page             Move replay review forward.",
                 "previous page         Move replay review backward.",
                 string.Empty,
@@ -3011,6 +3280,14 @@ namespace ConsoleApp.Objects
 
         private static string FormatReplayMessage(ReplayMessage replayMessage) =>
             $"{FormatTimestamp(replayMessage.Timestamp)}  {replayMessage.Text}";
+
+        private static string FormatReplayPlaybackState(ReplayPlaybackState playbackState) =>
+            playbackState switch
+            {
+                ReplayPlaybackState.Playing => "Playing",
+                ReplayPlaybackState.Complete => "Complete",
+                _ => "Paused"
+            };
 
         private static string FormatTimestamp(TimeSpan timestamp) =>
             $"{(int)timestamp.TotalMinutes:00}:{timestamp.Seconds:00}";

@@ -8,14 +8,14 @@ namespace ConsoleApp.Presentation
     public sealed class MatchPresentationState
     {
         /// <summary>
+        /// Gets the live replay state.
+        /// </summary>
+        public LiveReplayState LiveReplay { get; } = new();
+
+        /// <summary>
         /// Gets or sets the completed presented match.
         /// </summary>
         public PresentedMatch? PresentedMatch { get; set; }
-
-        /// <summary>
-        /// Gets or sets the current replay message index.
-        /// </summary>
-        public int ReplayIndex { get; set; }
 
         /// <summary>
         /// Gets or sets the selected round index.
@@ -42,8 +42,8 @@ namespace ConsoleApp.Presentation
         /// </summary>
         public void Clear()
         {
+            LiveReplay.Reset();
             PresentedMatch = null;
-            ReplayIndex = 0;
             RoundIndex = 0;
             IsDraftComplete = false;
             RoundDraft = null;
