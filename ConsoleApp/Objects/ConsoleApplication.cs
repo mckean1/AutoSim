@@ -18,14 +18,10 @@ namespace ConsoleApp.Objects
     {
         private static readonly TimeSpan LiveReplayRenderInterval = TimeSpan.FromMilliseconds(66);
         private static readonly TimeSpan ReplayPollDelay = TimeSpan.FromMilliseconds(25);
-        private DateTime _replayPlaybackStartedAtUtc;
-        private TimeSpan _replayPlaybackStartedFrom;
-
         private string _command;
         private string _previousCommand;
         private bool _isProcessingCommand;
         private DateTime _nextLiveReplayRenderAtUtc;
-        private DateTime _nextReplayAdvanceAtUtc;
         private readonly RoundAnalysisRenderer _roundAnalysisRenderer;
         private readonly AggregateRoundAnalysisRenderer _aggregateRoundAnalysisRenderer;
         private readonly AggregateRoundAnalyzer _aggregateRoundAnalyzer;
@@ -37,6 +33,7 @@ namespace ConsoleApp.Objects
         private readonly MatchPresentationState _matchPresentationState;
         private readonly MatchReviewFactory _matchReviewFactory;
         private readonly MatchReviewStore _matchReviewStore;
+        private readonly LiveReplayPlaybackClock _liveReplayPlaybackClock;
         private readonly ReplayReviewState _replayReviewState;
         private readonly ReplayPresenter _replayPresenter;
         private readonly RoundDraftValidator _roundDraftValidator;
@@ -44,7 +41,7 @@ namespace ConsoleApp.Objects
         private readonly ConsoleFrameRenderer _consoleFrameRenderer;
         private readonly ScreenNavigationState _screenNavigationState;
         private readonly ConsoleScreenRenderer _screenRenderer;
-        private readonly SeasonProgressionService _seasonProgressionService;
+        private readonly WeekSimulationService _weekSimulationService;
         private readonly Func<int> _seedProvider;
         private readonly WorldGenerationService _worldGenerationService;
         private ChampionDefinition? _selectedChampion;
@@ -76,9 +73,6 @@ namespace ConsoleApp.Objects
             _previousCommand = string.Empty;
             _isProcessingCommand = false;
             _nextLiveReplayRenderAtUtc = DateTime.MinValue;
-            _nextReplayAdvanceAtUtc = DateTime.MinValue;
-            _replayPlaybackStartedAtUtc = DateTime.MinValue;
-            _replayPlaybackStartedFrom = TimeSpan.Zero;
             _logDirectory = logDirectory;
             _roundAnalysisRenderer = new RoundAnalysisRenderer();
             _aggregateRoundAnalysisRenderer = new AggregateRoundAnalysisRenderer();
@@ -90,6 +84,7 @@ namespace ConsoleApp.Objects
             _matchPresentationState = new MatchPresentationState();
             _matchReviewFactory = new MatchReviewFactory();
             _matchReviewStore = new MatchReviewStore();
+            _liveReplayPlaybackClock = new LiveReplayPlaybackClock();
             _replayReviewState = new ReplayReviewState();
             _replayPresenter = new ReplayPresenter();
             _roundDraftValidator = new RoundDraftValidator();
@@ -97,7 +92,7 @@ namespace ConsoleApp.Objects
             _consoleFrameRenderer = new ConsoleFrameRenderer();
             _screenNavigationState = new ScreenNavigationState();
             _screenRenderer = new ConsoleScreenRenderer();
-            _seasonProgressionService = new SeasonProgressionService(matchEngineWrapper);
+            _weekSimulationService = new WeekSimulationService(matchEngineWrapper);
             _seedProvider = seedProvider ?? (() => Environment.TickCount);
             _worldGenerationService = new WorldGenerationService();
             _championCatalogBackScreen = ScreenKind.Home;
@@ -332,7 +327,7 @@ namespace ConsoleApp.Objects
                 return;
             }
 
-            if (DateTime.UtcNow < _nextReplayAdvanceAtUtc)
+            if (_liveReplayPlaybackClock.ShouldWaitToAdvance())
             {
                 Thread.Sleep(ReplayPollDelay);
                 return;
@@ -453,26 +448,26 @@ namespace ConsoleApp.Objects
             }
 
             Team humanTeam = GetHumanTeam(_world);
-            int resolvedWeek = _world.Season.CurrentWeek;
-            SeasonProgressionResult result = _seasonProgressionService.ResolveCurrentWeek(_world);
+            WeekSimulationResult result = _weekSimulationService.ResolveCurrentWeek(
+                _world,
+                humanTeam.Id,
+                _matchPresentationState.ScheduledMatch);
             _world = result.World;
-            MatchResult? humanResult = result.MatchResults
-                .FirstOrDefault(matchResult => IsHumanMatch(matchResult, humanTeam.Id, _world));
 
-            if (humanResult is null)
+            if (result.HumanMatchResult is null)
             {
                 _matchPresentationState.Clear();
                 _pendingMatch = null;
-                return RenderHome($"Resolved week {resolvedWeek}: Your team did not have a scheduled match.");
+                return RenderHome($"Resolved week {result.ResolvedWeek}: Your team did not have a scheduled match.");
             }
 
             _matchPresentationState.PresentedMatch = _replayPresenter.Present(
-                humanResult,
+                result.HumanMatchResult,
                 ChampionCatalog.GetDefaultChampions(),
                 teamId => FormatTeamName(_world, teamId));
             _matchReviewStore.LastMatch = _matchReviewFactory.Create(
                 _matchPresentationState.PresentedMatch,
-                resolvedWeek,
+                result.ResolvedWeek,
                 teamId => FormatTeamName(_world, teamId));
             _matchPresentationState.RoundIndex = 0;
             _matchPresentationState.LiveReplay.Reset();
@@ -846,24 +841,10 @@ namespace ConsoleApp.Objects
         }
 
         private void UpdateReplayPlaybackClock()
-        {
-            if (_matchPresentationState.LiveReplay.PlaybackState != ReplayPlaybackState.Playing)
-            {
-                return;
-            }
-
-            _matchPresentationState.LiveReplay.CurrentPlaybackTime = _replayPlaybackStartedAtUtc == DateTime.MinValue
-                ? TimeSpan.Zero
-                : _replayPlaybackStartedFrom
-                    + TimeSpan.FromTicks((long)((DateTime.UtcNow - _replayPlaybackStartedAtUtc).Ticks
-                        * GetReplaySpeedMultiplier(_matchPresentationState.LiveReplay.ReplaySpeed)));
-        }
+            => _liveReplayPlaybackClock.UpdatePlaybackTime(_matchPresentationState.LiveReplay);
 
         private void ResetReplayPlaybackClockAnchor()
-        {
-            _replayPlaybackStartedFrom = _matchPresentationState.LiveReplay.CurrentPlaybackTime;
-            _replayPlaybackStartedAtUtc = DateTime.UtcNow;
-        }
+            => _liveReplayPlaybackClock.ResetPlaybackAnchor(_matchPresentationState.LiveReplay);
 
         private bool TryAdvanceReplayToCurrentTime()
         {
@@ -928,8 +909,7 @@ namespace ConsoleApp.Objects
         private string TransitionAfterReplayComplete(string? message = null)
         {
             _matchPresentationState.LiveReplay.PlaybackState = ReplayPlaybackState.Complete;
-            _replayPlaybackStartedAtUtc = DateTime.MinValue;
-            _nextReplayAdvanceAtUtc = DateTime.MinValue;
+            _liveReplayPlaybackClock.Stop();
 
             if (_matchPresentationState.PresentedMatch is null)
             {
@@ -942,29 +922,7 @@ namespace ConsoleApp.Objects
         }
 
         private void ScheduleNextReplayAdvance(bool immediate)
-        {
-            _nextReplayAdvanceAtUtc = immediate
-                ? DateTime.UtcNow
-                : DateTime.UtcNow.Add(GetReplayDelay(_matchPresentationState.LiveReplay.ReplaySpeed));
-        }
-
-        private static TimeSpan GetReplayDelay(ReplaySpeed replaySpeed) =>
-            replaySpeed switch
-            {
-                ReplaySpeed.Slow => TimeSpan.FromMilliseconds(1500),
-                ReplaySpeed.Fast => TimeSpan.FromMilliseconds(400),
-                ReplaySpeed.VeryFast => TimeSpan.FromMilliseconds(150),
-                _ => TimeSpan.FromMilliseconds(900)
-            };
-
-        private static double GetReplaySpeedMultiplier(ReplaySpeed replaySpeed) =>
-            replaySpeed switch
-            {
-                ReplaySpeed.Slow => 0.5,
-                ReplaySpeed.Fast => 2.0,
-                ReplaySpeed.VeryFast => 4.0,
-                _ => 1.0
-            };
+            => _liveReplayPlaybackClock.ScheduleNextAdvance(_matchPresentationState.LiveReplay.ReplaySpeed, immediate);
 
         private void RenderCurrentModelToConsole(bool forceLiveFrame = false)
         {
@@ -1482,45 +1440,10 @@ namespace ConsoleApp.Objects
             _pendingMatch = match;
             _matchPresentationState.Clear();
             _matchPresentationState.ScheduledMatch = match;
-            _weekSimulationSession = StartWeekSimulationSession(_world, humanTeam.Id, match);
+            _weekSimulationSession = _weekSimulationService.StartSession(_world, humanTeam.Id, match);
             _screenNavigationState.NavigateTo(ScreenKind.ReplayPreparation);
             _currentScreenModel = BuildReplayPreparationScreen(_world, humanTeam, league, match);
             return _screenRenderer.RenderToString(_currentScreenModel);
-        }
-
-        private WeekSimulationSession StartWeekSimulationSession(
-            WorldState world,
-            string humanTeamId,
-            ScheduledMatch scheduledMatch)
-        {
-            CancellationTokenSource cancellationTokenSource = new();
-            Task<WeekSimulationResult> task = Task.Run(
-                () => ResolveWeekSimulation(world, humanTeamId, scheduledMatch, cancellationTokenSource.Token),
-                cancellationTokenSource.Token);
-            return new WeekSimulationSession(task, cancellationTokenSource);
-        }
-
-        private WeekSimulationResult ResolveWeekSimulation(
-            WorldState world,
-            string humanTeamId,
-            ScheduledMatch scheduledMatch,
-            CancellationToken cancellationToken)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            int resolvedWeek = world.Season.CurrentWeek;
-            SeasonProgressionResult result = _seasonProgressionService.ResolveCurrentWeek(world);
-            cancellationToken.ThrowIfCancellationRequested();
-            MatchResult? humanResult = result.MatchResults
-                .FirstOrDefault(matchResult => IsHumanMatch(matchResult, humanTeamId, result.World));
-
-            return new WeekSimulationResult
-            {
-                AllMatchResults = result.MatchResults,
-                HumanMatchResult = humanResult,
-                ResolvedWeek = resolvedWeek,
-                ScheduledMatch = scheduledMatch,
-                World = result.World
-            };
         }
 
         private bool TryRefreshWeekSimulationSession()
@@ -3200,18 +3123,6 @@ namespace ConsoleApp.Objects
         private static bool IsTeamMatch(ScheduledMatch match, string teamId) =>
             string.Equals(match.HomeTeamId, teamId, StringComparison.Ordinal)
             || string.Equals(match.AwayTeamId, teamId, StringComparison.Ordinal);
-
-        private static bool IsHumanMatch(MatchResult result, string humanTeamId, WorldState world)
-        {
-            ScheduledMatch? match = world.Tiers
-                .SelectMany(tier => tier.Leagues)
-                .SelectMany(league => league.Schedule)
-                .FirstOrDefault(scheduledMatch => scheduledMatch.Id == result.MatchId);
-
-            return match is not null
-                && (string.Equals(match.HomeTeamId, humanTeamId, StringComparison.Ordinal)
-                    || string.Equals(match.AwayTeamId, humanTeamId, StringComparison.Ordinal));
-        }
 
         private static string FormatTeamName(WorldState world, string teamId) =>
             world.Tiers
