@@ -39,9 +39,13 @@ namespace ConsoleApp.Objects
         private readonly RoundDraftValidator _roundDraftValidator;
         private readonly DeterministicRoundDraftService _roundDraftService;
         private readonly ChampionScreenModelFactory _championScreenModelFactory;
+        private readonly CareerScreenModelFactory _careerScreenModelFactory;
         private readonly ConsoleFrameRenderer _consoleFrameRenderer;
+        private readonly LiveReplayScreenModelFactory _liveReplayScreenModelFactory;
+        private readonly MatchScreenModelFactory _matchScreenModelFactory;
         private readonly MatchReviewScreenModelFactory _matchReviewScreenModelFactory;
         private readonly ConsoleScreenModelFactory _screenModelFactory;
+        private readonly ScreenHeaderFactory _screenHeaderFactory;
         private readonly ScreenNavigationState _screenNavigationState;
         private readonly ConsoleScreenRenderer _screenRenderer;
         private readonly WeekSimulationService _weekSimulationService;
@@ -93,9 +97,13 @@ namespace ConsoleApp.Objects
             _roundDraftValidator = new RoundDraftValidator();
             _roundDraftService = new DeterministicRoundDraftService();
             _championScreenModelFactory = new ChampionScreenModelFactory();
+            _careerScreenModelFactory = new CareerScreenModelFactory();
             _consoleFrameRenderer = new ConsoleFrameRenderer();
+            _liveReplayScreenModelFactory = new LiveReplayScreenModelFactory();
+            _matchScreenModelFactory = new MatchScreenModelFactory();
             _matchReviewScreenModelFactory = new MatchReviewScreenModelFactory();
             _screenModelFactory = new ConsoleScreenModelFactory();
+            _screenHeaderFactory = new ScreenHeaderFactory();
             _screenNavigationState = new ScreenNavigationState();
             _screenRenderer = new ConsoleScreenRenderer();
             _weekSimulationService = new WeekSimulationService(matchEngineWrapper);
@@ -442,7 +450,11 @@ namespace ConsoleApp.Objects
             _matchPresentationState.RoundDraft = draft;
             _matchPresentationState.IsDraftComplete = true;
             _screenNavigationState.CurrentScreen = ScreenKind.DraftSummary;
-            _currentScreenModel = BuildDraftSummaryScreen(_world, humanTeam, league, _matchPresentationState.ScheduledMatch, draft);
+            _currentScreenModel = _matchScreenModelFactory.BuildDraftSummaryScreen(
+                _screenHeaderFactory.BuildHeader(_world, humanTeam, league),
+                _world,
+                _matchPresentationState.ScheduledMatch,
+                draft);
             return _screenRenderer.RenderToString(_currentScreenModel);
         }
 
@@ -480,9 +492,13 @@ namespace ConsoleApp.Objects
             _matchPresentationState.LiveReplay.CurrentEventIndex = 1;
             _pendingMatch = null;
 
-            League league = GetTeamLeague(_world, GetHumanTeam(_world));
+            humanTeam = GetHumanTeam(_world);
+            League league = GetTeamLeague(_world, humanTeam);
             _screenNavigationState.CurrentScreen = ScreenKind.LiveReplay;
-            _currentScreenModel = BuildLiveReplayScreen(_world, GetHumanTeam(_world), league, _matchPresentationState);
+            _currentScreenModel = _liveReplayScreenModelFactory.BuildLiveReplayScreen(
+                _screenHeaderFactory.BuildHeader(_world, humanTeam, league),
+                _world,
+                _matchPresentationState);
             return _screenRenderer.RenderToString(_currentScreenModel);
         }
 
@@ -560,7 +576,11 @@ namespace ConsoleApp.Objects
             Team humanTeam = GetHumanTeam(_world);
             League league = GetTeamLeague(_world, humanTeam);
             _screenNavigationState.CurrentScreen = ScreenKind.LiveReplay;
-            _currentScreenModel = BuildLiveReplayScreen(_world, humanTeam, league, _matchPresentationState, message);
+            _currentScreenModel = _liveReplayScreenModelFactory.BuildLiveReplayScreen(
+                _screenHeaderFactory.BuildHeader(_world, humanTeam, league),
+                _world,
+                _matchPresentationState,
+                message);
             return _screenRenderer.RenderToString(_currentScreenModel);
         }
 
@@ -574,7 +594,7 @@ namespace ConsoleApp.Objects
             SetReviewBackScreen();
             _screenNavigationState.NavigateTo(ScreenKind.RoundList);
             _currentScreenModel = _matchReviewScreenModelFactory.BuildRoundListScreen(
-                BuildChampionHeader(_world),
+                _screenHeaderFactory.BuildChampionHeader(_world),
                 _matchReviewStore.LastMatch);
             return _screenRenderer.RenderToString(_currentScreenModel);
         }
@@ -600,7 +620,7 @@ namespace ConsoleApp.Objects
             SetReviewBackScreen();
             _screenNavigationState.NavigateTo(ScreenKind.LastMatchReview);
             _currentScreenModel = _matchReviewScreenModelFactory.BuildLastMatchReviewScreen(
-                BuildChampionHeader(_world),
+                _screenHeaderFactory.BuildChampionHeader(_world),
                 _matchReviewStore.LastMatch);
             return _screenRenderer.RenderToString(_currentScreenModel);
         }
@@ -672,7 +692,7 @@ namespace ConsoleApp.Objects
             _selectedReviewRoundNumber = roundNumber;
             _screenNavigationState.NavigateTo(ScreenKind.RoundReview);
             _currentScreenModel = _matchReviewScreenModelFactory.BuildRoundReviewScreen(
-                BuildChampionHeader(_world),
+                _screenHeaderFactory.BuildChampionHeader(_world),
                 matchReview,
                 roundReview,
                 message);
@@ -708,7 +728,7 @@ namespace ConsoleApp.Objects
 
             _screenNavigationState.NavigateTo(ScreenKind.ReplayReview);
             _currentScreenModel = _matchReviewScreenModelFactory.BuildReplayReviewScreen(
-                BuildChampionHeader(_world),
+                _screenHeaderFactory.BuildChampionHeader(_world),
                 matchReview,
                 _replayReviewState,
                 message);
@@ -995,7 +1015,11 @@ namespace ConsoleApp.Objects
             Team humanTeam = GetHumanTeam(_world);
             League league = GetTeamLeague(_world, humanTeam);
             _screenNavigationState.CurrentScreen = ScreenKind.RoundSummary;
-            _currentScreenModel = BuildRoundSummaryScreen(_world, humanTeam, league, _matchPresentationState, message);
+            _currentScreenModel = _matchScreenModelFactory.BuildRoundSummaryScreen(
+                _screenHeaderFactory.BuildHeader(_world, humanTeam, league),
+                _world,
+                _matchPresentationState.PresentedMatch.Rounds[_matchPresentationState.RoundIndex],
+                message);
             return _screenRenderer.RenderToString(_currentScreenModel);
         }
 
@@ -1009,7 +1033,13 @@ namespace ConsoleApp.Objects
             Team humanTeam = GetHumanTeam(_world);
             League league = GetTeamLeague(_world, humanTeam);
             _screenNavigationState.CurrentScreen = ScreenKind.MatchSummary;
-            _currentScreenModel = BuildMatchSummaryScreen(_world, humanTeam, league, _matchPresentationState.PresentedMatch, message);
+            _currentScreenModel = _matchScreenModelFactory.BuildMatchSummaryScreen(
+                _screenHeaderFactory.BuildHeader(_world, humanTeam, league),
+                _world,
+                humanTeam,
+                league,
+                _matchPresentationState.PresentedMatch,
+                message);
             return _screenRenderer.RenderToString(_currentScreenModel);
         }
 
@@ -1174,7 +1204,11 @@ namespace ConsoleApp.Objects
             League league = GetTeamLeague(_world, humanTeam);
             _selectedTeam = humanTeam;
             _screenNavigationState.NavigateTo(ScreenKind.League);
-            _currentScreenModel = BuildLeagueScreen(_world, humanTeam, league);
+            _currentScreenModel = _careerScreenModelFactory.BuildLeagueScreen(
+                _screenHeaderFactory.BuildHeader(_world, humanTeam, league),
+                _world,
+                humanTeam,
+                league);
             return _screenRenderer.RenderToString(_currentScreenModel);
         }
 
@@ -1189,7 +1223,11 @@ namespace ConsoleApp.Objects
             League league = GetTeamLeague(_world, team);
             _selectedTeam = team;
             _screenNavigationState.NavigateTo(ScreenKind.Team);
-            _currentScreenModel = BuildTeamScreen(_world, team, league);
+            _currentScreenModel = _careerScreenModelFactory.BuildTeamScreen(
+                _screenHeaderFactory.BuildHeader(_world, team, league),
+                _world,
+                team,
+                league);
             return _screenRenderer.RenderToString(_currentScreenModel);
         }
 
@@ -1216,7 +1254,11 @@ namespace ConsoleApp.Objects
             League league = GetTeamLeague(_world, team);
             _selectedTeam = team;
             _screenNavigationState.NavigateTo(ScreenKind.Team);
-            _currentScreenModel = BuildTeamScreen(_world, team, league);
+            _currentScreenModel = _careerScreenModelFactory.BuildTeamScreen(
+                _screenHeaderFactory.BuildHeader(_world, team, league),
+                _world,
+                team,
+                league);
             return _screenRenderer.RenderToString(_currentScreenModel);
         }
 
@@ -1230,7 +1272,11 @@ namespace ConsoleApp.Objects
             Team humanTeam = GetHumanTeam(_world);
             League league = GetTeamLeague(_world, humanTeam);
             _screenNavigationState.NavigateTo(ScreenKind.Schedule);
-            _currentScreenModel = BuildScheduleScreen(_world, humanTeam, league);
+            _currentScreenModel = _careerScreenModelFactory.BuildScheduleScreen(
+                _screenHeaderFactory.BuildHeader(_world, humanTeam, league),
+                _world,
+                humanTeam,
+                league);
             return _screenRenderer.RenderToString(_currentScreenModel);
         }
 
@@ -1255,7 +1301,12 @@ namespace ConsoleApp.Objects
             Team opponent = league.Teams.First(team => string.Equals(team.Id, opponentId, StringComparison.Ordinal));
             _selectedTeam = opponent;
             _screenNavigationState.NavigateTo(ScreenKind.Team);
-            _currentScreenModel = BuildTeamScreen(_world, opponent, league, $"Opponent: {opponent.Name}");
+            _currentScreenModel = _careerScreenModelFactory.BuildTeamScreen(
+                _screenHeaderFactory.BuildHeader(_world, opponent, league),
+                _world,
+                opponent,
+                league,
+                $"Opponent: {opponent.Name}");
             return _screenRenderer.RenderToString(_currentScreenModel);
         }
 
@@ -1283,7 +1334,12 @@ namespace ConsoleApp.Objects
             League? league = team is null ? null : GetTeamLeague(_world, team);
             _selectedPlayer = player;
             _screenNavigationState.NavigateTo(ScreenKind.PlayerDetail);
-            _currentScreenModel = BuildPlayerScreen(_world, player, team, league);
+            _currentScreenModel = _careerScreenModelFactory.BuildPlayerScreen(
+                team is null || league is null
+                    ? _screenHeaderFactory.BuildChampionHeader(_world)
+                    : _screenHeaderFactory.BuildHeader(_world, team, league),
+                player,
+                team);
             return _screenRenderer.RenderToString(_currentScreenModel);
         }
 
@@ -1297,7 +1353,11 @@ namespace ConsoleApp.Objects
             Team humanTeam = GetHumanTeam(_world);
             League league = GetTeamLeague(_world, humanTeam);
             _screenNavigationState.NavigateTo(ScreenKind.Playoffs);
-            _currentScreenModel = BuildPlayoffPictureScreen(_world, humanTeam, league);
+            _currentScreenModel = _careerScreenModelFactory.BuildPlayoffPictureScreen(
+                _screenHeaderFactory.BuildHeader(_world, humanTeam, league),
+                _world,
+                humanTeam,
+                league);
             return _screenRenderer.RenderToString(_currentScreenModel);
         }
 
@@ -1435,7 +1495,12 @@ namespace ConsoleApp.Objects
             Team humanTeam = GetHumanTeam(_world);
             League league = GetTeamLeague(_world, humanTeam);
             _screenNavigationState.ResetTo(ScreenKind.Home);
-            _currentScreenModel = BuildHomeScreen(_world, humanTeam, league, message);
+            _currentScreenModel = _careerScreenModelFactory.BuildHomeScreen(
+                _screenHeaderFactory.BuildHeader(_world, humanTeam, league),
+                _world,
+                humanTeam,
+                league,
+                message);
             return _screenRenderer.RenderToString(_currentScreenModel);
         }
 
@@ -1465,7 +1530,10 @@ namespace ConsoleApp.Objects
             _matchPresentationState.ScheduledMatch = match;
             _weekSimulationSession = _weekSimulationService.StartSession(_world, humanTeam.Id, match);
             _screenNavigationState.NavigateTo(ScreenKind.ReplayPreparation);
-            _currentScreenModel = BuildReplayPreparationScreen(_world, humanTeam, league, match);
+            _currentScreenModel = _matchScreenModelFactory.BuildReplayPreparationScreen(
+                _screenHeaderFactory.BuildHeader(_world, humanTeam, league),
+                _world,
+                match);
             return _screenRenderer.RenderToString(_currentScreenModel);
         }
 
@@ -1509,7 +1577,8 @@ namespace ConsoleApp.Objects
             {
                 _matchPresentationState.Clear();
                 _screenNavigationState.ResetTo(ScreenKind.Home);
-                _currentScreenModel = BuildHomeScreen(
+                _currentScreenModel = _careerScreenModelFactory.BuildHomeScreen(
+                    _screenHeaderFactory.BuildHeader(_world, GetHumanTeam(_world), GetTeamLeague(_world, GetHumanTeam(_world))),
                     _world,
                     GetHumanTeam(_world),
                     GetTeamLeague(_world, GetHumanTeam(_world)),
@@ -1540,10 +1609,9 @@ namespace ConsoleApp.Objects
 
             Team humanTeam = GetHumanTeam(_world);
             League league = GetTeamLeague(_world, humanTeam);
-            _currentScreenModel = BuildLiveReplayScreen(
+            _currentScreenModel = _liveReplayScreenModelFactory.BuildLiveReplayScreen(
+                _screenHeaderFactory.BuildHeader(_world, humanTeam, league),
                 _world,
-                humanTeam,
-                league,
                 _matchPresentationState,
                 autoPlayRequested ? "Replay is live." : "Replay ready.");
         }
@@ -1576,7 +1644,11 @@ namespace ConsoleApp.Objects
             }
 
             _screenNavigationState.CurrentScreen = ScreenKind.ReplayPreparation;
-            _currentScreenModel = BuildReplayPreparationScreen(_world, humanTeam, league, match, message);
+            _currentScreenModel = _matchScreenModelFactory.BuildReplayPreparationScreen(
+                _screenHeaderFactory.BuildHeader(_world, humanTeam, league),
+                _world,
+                match,
+                message);
             return _screenRenderer.RenderToString(_currentScreenModel);
         }
 
@@ -1603,10 +1675,9 @@ namespace ConsoleApp.Objects
                 ?? CreateRoundDraft(_world, league, _matchPresentationState.ScheduledMatch, roundNumber: 1);
             _matchPresentationState.RoundDraft = draft;
             _screenNavigationState.NavigateTo(ScreenKind.Draft);
-            _currentScreenModel = BuildDraftScreen(
+            _currentScreenModel = _matchScreenModelFactory.BuildDraftScreen(
+                _screenHeaderFactory.BuildHeader(_world, humanTeam, league),
                 _world,
-                humanTeam,
-                league,
                 _matchPresentationState.ScheduledMatch,
                 draft,
                 message);
@@ -1619,7 +1690,7 @@ namespace ConsoleApp.Objects
             _helpContextCommands = GetCurrentScreenCommands();
             _screenNavigationState.NavigateTo(ScreenKind.Help);
             _currentScreenModel = _screenModelFactory.BuildHelpScreen(
-                BuildChampionHeader(_world),
+                _screenHeaderFactory.BuildChampionHeader(_world),
                 _helpContextScreen,
                 _helpContextCommands);
             return _screenRenderer.RenderToString(_currentScreenModel);
@@ -1651,37 +1722,40 @@ namespace ConsoleApp.Objects
                 return _screenNavigationState.CurrentScreen switch
                 {
                     ScreenKind.Help => _screenModelFactory.BuildHelpScreen(
-                        BuildChampionHeader(null),
+                        _screenHeaderFactory.BuildChampionHeader(null),
                         _helpContextScreen,
                         _helpContextCommands,
                         message),
                     ScreenKind.NewGameSetup when _newGameSetupState is not null =>
                         _screenModelFactory.BuildNewGameSetupScreen(_newGameSetupState, message),
                     ScreenKind.ChampionCatalog => _championScreenModelFactory.BuildChampionCatalogScreen(
-                        BuildChampionHeader(null),
+                        _screenHeaderFactory.BuildChampionHeader(null),
                         _championCatalogFilter,
                         message),
                     ScreenKind.ChampionDetail when _selectedChampion is not null =>
-                        _championScreenModelFactory.BuildChampionDetailScreen(BuildChampionHeader(null), _selectedChampion, message),
+                        _championScreenModelFactory.BuildChampionDetailScreen(
+                            _screenHeaderFactory.BuildChampionHeader(null),
+                            _selectedChampion,
+                            message),
                     ScreenKind.LastMatchReview when _matchReviewStore.LastMatch is not null =>
                         _matchReviewScreenModelFactory.BuildLastMatchReviewScreen(
-                            BuildChampionHeader(null),
+                            _screenHeaderFactory.BuildChampionHeader(null),
                             _matchReviewStore.LastMatch,
                             message),
                     ScreenKind.RoundList when _matchReviewStore.LastMatch is not null =>
                         _matchReviewScreenModelFactory.BuildRoundListScreen(
-                            BuildChampionHeader(null),
+                            _screenHeaderFactory.BuildChampionHeader(null),
                             _matchReviewStore.LastMatch,
                             message),
                     ScreenKind.RoundReview when _matchReviewStore.LastMatch is not null =>
                         _matchReviewScreenModelFactory.BuildRoundReviewScreen(
-                            BuildChampionHeader(null),
+                            _screenHeaderFactory.BuildChampionHeader(null),
                             _matchReviewStore.LastMatch,
                             GetReviewRound(_matchReviewStore.LastMatch, _selectedReviewRoundNumber),
                             message),
                     ScreenKind.ReplayReview when _matchReviewStore.LastMatch is not null =>
                         _matchReviewScreenModelFactory.BuildReplayReviewScreen(
-                            BuildChampionHeader(null),
+                            _screenHeaderFactory.BuildChampionHeader(null),
                             _matchReviewStore.LastMatch,
                             _replayReviewState,
                             message),
@@ -1691,720 +1765,109 @@ namespace ConsoleApp.Objects
 
             Team humanTeam = GetHumanTeam(_world);
             League league = GetTeamLeague(_world, humanTeam);
+            ScreenHeaderModel header = _screenHeaderFactory.BuildHeader(_world, humanTeam, league);
             return _screenNavigationState.CurrentScreen switch
             {
-                ScreenKind.Team => BuildTeamScreen(_world, _selectedTeam ?? humanTeam, GetTeamLeague(_world, _selectedTeam ?? humanTeam), message),
+                ScreenKind.Team => _careerScreenModelFactory.BuildTeamScreen(
+                    _screenHeaderFactory.BuildHeader(
+                        _world,
+                        _selectedTeam ?? humanTeam,
+                        GetTeamLeague(_world, _selectedTeam ?? humanTeam)),
+                    _world,
+                    _selectedTeam ?? humanTeam,
+                    GetTeamLeague(_world, _selectedTeam ?? humanTeam),
+                    message),
                 ScreenKind.PlayerDetail when _selectedPlayer is not null =>
-                    BuildPlayerScreen(_world, _selectedPlayer, _selectedPlayer.TeamId is null ? null : FindTeamById(_world, _selectedPlayer.TeamId), _selectedPlayer.TeamId is null ? null : GetTeamLeague(_world, FindTeamById(_world, _selectedPlayer.TeamId)!), message),
-                ScreenKind.League => BuildLeagueScreen(_world, humanTeam, league, message),
-                ScreenKind.Playoffs => BuildPlayoffPictureScreen(_world, humanTeam, league, message),
+                    _careerScreenModelFactory.BuildPlayerScreen(
+                        _selectedPlayer.TeamId is null
+                            ? _screenHeaderFactory.BuildChampionHeader(_world)
+                            : _screenHeaderFactory.BuildHeader(
+                                _world,
+                                FindTeamById(_world, _selectedPlayer.TeamId)!,
+                                GetTeamLeague(_world, FindTeamById(_world, _selectedPlayer.TeamId)!)),
+                        _selectedPlayer,
+                        _selectedPlayer.TeamId is null ? null : FindTeamById(_world, _selectedPlayer.TeamId),
+                        message),
+                ScreenKind.League => _careerScreenModelFactory.BuildLeagueScreen(header, _world, humanTeam, league, message),
+                ScreenKind.Playoffs => _careerScreenModelFactory.BuildPlayoffPictureScreen(header, _world, humanTeam, league, message),
                 ScreenKind.Help => _screenModelFactory.BuildHelpScreen(
-                    BuildChampionHeader(_world),
+                    _screenHeaderFactory.BuildChampionHeader(_world),
                     _helpContextScreen,
                     _helpContextCommands,
                     message),
-                ScreenKind.Schedule => BuildScheduleScreen(_world, humanTeam, league, message),
+                ScreenKind.Schedule => _careerScreenModelFactory.BuildScheduleScreen(header, _world, humanTeam, league, message),
                 ScreenKind.ChampionCatalog => _championScreenModelFactory.BuildChampionCatalogScreen(
-                    BuildChampionHeader(_world),
+                    _screenHeaderFactory.BuildChampionHeader(_world),
                     _championCatalogFilter,
                     message),
                 ScreenKind.ChampionDetail when _selectedChampion is not null =>
-                    _championScreenModelFactory.BuildChampionDetailScreen(BuildChampionHeader(_world), _selectedChampion, message),
+                    _championScreenModelFactory.BuildChampionDetailScreen(
+                        _screenHeaderFactory.BuildChampionHeader(_world),
+                        _selectedChampion,
+                        message),
                 ScreenKind.ReplayPreparation when _matchPresentationState.ScheduledMatch is not null =>
-                    BuildReplayPreparationScreen(_world, humanTeam, league, _matchPresentationState.ScheduledMatch, message),
+                    _matchScreenModelFactory.BuildReplayPreparationScreen(
+                        header,
+                        _world,
+                        _matchPresentationState.ScheduledMatch,
+                        message),
                 ScreenKind.LastMatchReview when _matchReviewStore.LastMatch is not null =>
                     _matchReviewScreenModelFactory.BuildLastMatchReviewScreen(
-                        BuildChampionHeader(_world),
+                        _screenHeaderFactory.BuildChampionHeader(_world),
                         _matchReviewStore.LastMatch,
                         message),
                 ScreenKind.RoundList when _matchReviewStore.LastMatch is not null =>
                     _matchReviewScreenModelFactory.BuildRoundListScreen(
-                        BuildChampionHeader(_world),
+                        _screenHeaderFactory.BuildChampionHeader(_world),
                         _matchReviewStore.LastMatch,
                         message),
                 ScreenKind.RoundReview when _matchReviewStore.LastMatch is not null =>
                     _matchReviewScreenModelFactory.BuildRoundReviewScreen(
-                        BuildChampionHeader(_world),
+                        _screenHeaderFactory.BuildChampionHeader(_world),
                         _matchReviewStore.LastMatch,
                         GetReviewRound(_matchReviewStore.LastMatch, _selectedReviewRoundNumber),
                         message),
                 ScreenKind.ReplayReview when _matchReviewStore.LastMatch is not null =>
                     _matchReviewScreenModelFactory.BuildReplayReviewScreen(
-                        BuildChampionHeader(_world),
+                        _screenHeaderFactory.BuildChampionHeader(_world),
                         _matchReviewStore.LastMatch,
                         _replayReviewState,
                         message),
                 ScreenKind.MatchPreview when _pendingMatch is not null =>
-                    BuildMatchPreviewScreen(_world, humanTeam, league, _pendingMatch, message),
+                    _matchScreenModelFactory.BuildMatchPreviewScreen(header, _world, humanTeam, league, _pendingMatch, message),
                 ScreenKind.Draft when _matchPresentationState.ScheduledMatch is not null
                     && _matchPresentationState.RoundDraft is not null =>
-                    BuildDraftScreen(
+                    _matchScreenModelFactory.BuildDraftScreen(
+                        header,
                         _world,
-                        humanTeam,
-                        league,
                         _matchPresentationState.ScheduledMatch,
                         _matchPresentationState.RoundDraft,
                         message),
                 ScreenKind.DraftSummary when _matchPresentationState.ScheduledMatch is not null
                     && _matchPresentationState.RoundDraft is not null =>
-                    BuildDraftSummaryScreen(
+                    _matchScreenModelFactory.BuildDraftSummaryScreen(
+                        header,
                         _world,
-                        humanTeam,
-                        league,
                         _matchPresentationState.ScheduledMatch,
                         _matchPresentationState.RoundDraft,
                         message),
                 ScreenKind.LiveReplay when _matchPresentationState.PresentedMatch is not null =>
-                    BuildLiveReplayScreen(_world, humanTeam, league, _matchPresentationState, message),
+                    _liveReplayScreenModelFactory.BuildLiveReplayScreen(header, _world, _matchPresentationState, message),
                 ScreenKind.RoundSummary when _matchPresentationState.PresentedMatch is not null =>
-                    BuildRoundSummaryScreen(_world, humanTeam, league, _matchPresentationState, message),
+                    _matchScreenModelFactory.BuildRoundSummaryScreen(
+                        header,
+                        _world,
+                        _matchPresentationState.PresentedMatch.Rounds[_matchPresentationState.RoundIndex],
+                        message),
                 ScreenKind.MatchSummary when _matchPresentationState.PresentedMatch is not null =>
-                    BuildMatchSummaryScreen(_world, humanTeam, league, _matchPresentationState.PresentedMatch, message),
-                _ => BuildHomeScreen(_world, humanTeam, league, message)
-            };
-        }
-
-        private static ScreenRenderModel BuildHomeScreen(
-            WorldState world,
-            Team humanTeam,
-            League league,
-            string? message = null)
-        {
-            LeagueStanding standing = GetStanding(league, humanTeam.Id);
-            Division division = GetDivision(league, humanTeam);
-            ScheduledMatch? nextMatch = GetNextHumanMatch(world, humanTeam);
-
-            return new ScreenRenderModel
-            {
-                Commands =
-                [
-                    ConsoleConstants.ShowTeam,
-                    ConsoleConstants.ShowLeague,
-                    ConsoleConstants.ShowSchedule,
-                    ConsoleConstants.ShowChampions,
-                    ConsoleConstants.StartMatch,
-                    ConsoleConstants.ViewLastMatch,
-                    ConsoleConstants.ViewReplay,
-                    ConsoleConstants.ViewRounds,
-                    ConsoleConstants.Help
-                ],
-                ContentLines =
-                [
-                    $"Next match: {FormatMatch(world, nextMatch)}",
-                    string.Empty,
-                    "Team snapshot",
-                    $"  Coach: {GetHumanCoach(world).Name}",
-                    $"  Team: {humanTeam.Name}",
-                    $"  Record: {standing.MatchWins}-{standing.MatchLosses}",
-                    $"  Points: {FormatPoints(standing.Points)}",
-                    string.Empty,
-                    $"Current league: {FormatLeagueName(league)}",
-                    $"Division: {division.Name} Division",
-                    string.Empty,
-                    $"Recommended action: {GetRecommendedAction(world, humanTeam)}"
-                ],
-                Header = BuildHeader(world, humanTeam, league),
-                Message = message,
-                Title = "Home"
-            };
-        }
-
-        private static ScreenRenderModel BuildTeamScreen(
-            WorldState world,
-            Team team,
-            League league,
-            string? message = null)
-        {
-            Coach coach = world.Coaches.First(currentCoach => string.Equals(currentCoach.Id, team.CoachId, StringComparison.Ordinal));
-            Division division = GetDivision(league, team);
-            IReadOnlyList<Player> players = world.Players
-                .Where(player => team.PlayerIds.Contains(player.Id))
-                .OrderBy(player => player.PositionRole)
-                .ThenBy(player => player.Name, StringComparer.Ordinal)
-                .ToList();
-
-            List<string> lines =
-            [
-                $"Coach: {coach.Name}",
-                $"Team: {team.Name}",
-                $"League: {FormatLeagueName(league)}",
-                $"Division: {division.Name} Division",
-                string.Empty,
-                "Roster",
-                "Role      Player"
-            ];
-            lines.AddRange(players.Select(player => $"{player.PositionRole,-9} {player.Name}"));
-            lines.Add(string.Empty);
-            lines.Add($"Next match: {FormatMatch(world, GetNextHumanMatch(world, team))}");
-
-            return new ScreenRenderModel
-            {
-                Commands =
-                [
-                    ConsoleConstants.Home,
-                    ConsoleConstants.ShowLeague,
-                    ConsoleConstants.ShowSchedule,
-                    ConsoleConstants.ShowChampions,
-                    ConsoleConstants.StartMatch,
-                    ConsoleConstants.Help
-                ],
-                ContentLines = lines,
-                Header = BuildHeader(world, team, league),
-                Message = message,
-                Title = "Team Detail"
-            };
-        }
-
-        private static ScreenRenderModel BuildLeagueScreen(
-            WorldState world,
-            Team humanTeam,
-            League league,
-            string? message = null)
-        {
-            Division division = GetDivision(league, humanTeam);
-            IReadOnlyList<LeagueStanding> standings = GetStandingsForDivision(league, division);
-            string standingsTitle = standings.Count > 0 ? $"{division.Name} Division Standings" : "Overall Standings";
-            standings = standings.Count > 0 ? standings : league.Standings;
-
-            List<string> lines =
-            [
-                $"League: {FormatLeagueName(league)}",
-                $"Your record: {FormatRecord(GetStanding(league, humanTeam.Id))}",
-                $"Your points: {FormatPoints(GetStanding(league, humanTeam.Id).Points)}",
-                string.Empty,
-                standingsTitle,
-                "Rank  Team                         Record  Points"
-            ];
-            int rank = 1;
-            lines.AddRange(standings.Select(standing =>
-                $"{rank++,4}  {FormatTeamName(world, standing.TeamId),-27} {FormatRecord(standing),-7} {FormatPoints(standing.Points)}"));
-
-            return new ScreenRenderModel
-            {
-                Commands =
-                [
-                    ConsoleConstants.Home,
-                    ConsoleConstants.ShowTeam,
-                    ConsoleConstants.ShowSchedule,
-                    ConsoleConstants.ShowChampions,
-                    ConsoleConstants.Help
-                ],
-                ContentLines = lines,
-                Header = BuildHeader(world, humanTeam, league),
-                Message = message,
-                Title = "League"
-            };
-        }
-
-        private static ScreenRenderModel BuildScheduleScreen(
-            WorldState world,
-            Team humanTeam,
-            League league,
-            string? message = null)
-        {
-            IReadOnlyList<ScheduledMatch> matches = league.Schedule
-                .Where(match => match.Week == world.Season.CurrentWeek)
-                .OrderBy(match => match.MatchType)
-                .ThenBy(match => FormatTeamName(world, match.HomeTeamId), StringComparer.Ordinal)
-                .ThenBy(match => FormatTeamName(world, match.AwayTeamId), StringComparer.Ordinal)
-                .ToList();
-            ScheduledMatch? humanMatch = matches.FirstOrDefault(match => IsTeamMatch(match, humanTeam.Id));
-
-            List<string> lines =
-            [
-                $"Current week: {world.Season.CurrentWeek}",
-                $"Human team match: {FormatMatch(world, humanMatch)}",
-                string.Empty,
-                "Scheduled matches",
-                "Match                                      Status"
-            ];
-            lines.AddRange(matches
-                .Take(12)
-                .Select(match => $"{FormatMatch(world, match),-42} {FormatMatchStatus(match)}"));
-
-            if (matches.Count > 12)
-            {
-                lines.Add($"... {matches.Count - 12} more matches");
-            }
-
-            return new ScreenRenderModel
-            {
-                Commands =
-                [
-                    ConsoleConstants.Home,
-                    ConsoleConstants.StartMatch,
-                    ConsoleConstants.ShowTeam,
-                    ConsoleConstants.ShowLeague,
-                    ConsoleConstants.ShowChampions,
-                    ConsoleConstants.Help
-                ],
-                ContentLines = lines,
-                Header = BuildHeader(world, humanTeam, league),
-                Message = message,
-                Title = "Schedule"
-            };
-        }
-
-        private static ScreenRenderModel BuildMatchPreviewScreen(
-            WorldState world,
-            Team humanTeam,
-            League league,
-            ScheduledMatch match,
-            string? message = null)
-        {
-            LeagueStanding blueStanding = GetStanding(league, match.HomeTeamId);
-            LeagueStanding redStanding = GetStanding(league, match.AwayTeamId);
-            string blueTeamName = FormatTeamName(world, match.HomeTeamId);
-            string redTeamName = FormatTeamName(world, match.AwayTeamId);
-
-            return new ScreenRenderModel
-            {
-                Commands =
-                [
-                    ConsoleConstants.Continue,
-                    ConsoleConstants.Cancel,
-                    ConsoleConstants.ShowTeam,
-                    ConsoleConstants.ShowOpponent,
-                    ConsoleConstants.ShowChampions,
-                    ConsoleConstants.Help
-                ],
-                ContentLines =
-                [
-                    $"{blueTeamName} vs {redTeamName}",
-                    $"Week {match.Week} | {FormatMatchType(match.MatchType)} | Best of {match.BestOf}",
-                    string.Empty,
-                    $"{blueTeamName}{FormatHumanMarker(humanTeam, match.HomeTeamId)}",
-                    $"Record: {FormatRecord(blueStanding)}",
-                    $"Points: {FormatPoints(blueStanding.Points)}",
-                    string.Empty,
-                    $"{redTeamName}{FormatHumanMarker(humanTeam, match.AwayTeamId)}",
-                    $"Record: {FormatRecord(redStanding)}",
-                    $"Points: {FormatPoints(redStanding.Points)}",
-                    string.Empty,
-                    $"First team to {(match.BestOf / 2) + 1} round wins takes the match."
-                ],
-                Header = BuildHeader(world, humanTeam, league),
-                Message = message,
-                Title = "Match Preview"
-            };
-        }
-
-        private static ScreenRenderModel BuildReplayPreparationScreen(
-            WorldState world,
-            Team humanTeam,
-            League league,
-            ScheduledMatch match,
-            string? message = null)
-        {
-            string blueTeamName = FormatTeamName(world, match.HomeTeamId);
-            string redTeamName = FormatTeamName(world, match.AwayTeamId);
-
-            return new ScreenRenderModel
-            {
-                Commands =
-                [
-                    ConsoleConstants.Play,
-                    ConsoleConstants.Pause,
-                    ConsoleConstants.Status,
-                    ConsoleConstants.Help,
-                    ConsoleConstants.QuitReplay
-                ],
-                ContentLines =
-                [
-                    "Preparing live replay...",
-                    $"Resolving Season {world.Season.Year}, Week {world.Season.CurrentWeek}...",
-                    $"{blueTeamName} vs {redTeamName}",
-                    $"Week {match.Week} | {FormatMatchType(match.MatchType)} | Best of {match.BestOf}",
-                    string.Empty,
-                    "The match and the rest of the week are simulating in the background.",
-                    "Replay messages will reveal from their timestamps once preparation completes.",
-                    string.Empty,
-                    "Commands: play, pause, status, help, quit replay"
-                ],
-                Header = BuildHeader(world, humanTeam, league),
-                Message = message,
-                Title = "Live Replay"
-            };
-        }
-
-        private static ScreenRenderModel BuildDraftScreen(
-            WorldState world,
-            Team humanTeam,
-            League league,
-            ScheduledMatch match,
-            RoundDraft draft,
-            string? message = null) =>
-            new()
-            {
-                Commands =
-                [
-                    ConsoleConstants.AutoDraft,
-                    ConsoleConstants.Continue,
-                    ConsoleConstants.Cancel,
-                    ConsoleConstants.ShowChampions,
-                    ConsoleConstants.Help
-                ],
-                ContentLines =
-                [
-                    "Current round: 1",
-                    $"Blue team: {FormatTeamName(world, match.HomeTeamId)}",
-                    $"Red team: {FormatTeamName(world, match.AwayTeamId)}",
-                    "Ban/pick order: automated MVP draft, no bans yet",
-                    string.Empty,
-                    "Blue bans: None",
-                    "Red bans: None",
-                    string.Empty,
-                    "Blue picks by position",
-                    .. FormatLineup(draft.BlueChampions),
-                    string.Empty,
-                    "Red picks by position",
-                    .. FormatLineup(draft.RedChampions),
-                    string.Empty,
-                    $"Available champion count: {ChampionCatalog.GetDefaultChampions().Count}",
-                    "Current draft status: Ready to auto draft"
-                ],
-                Header = BuildHeader(world, humanTeam, league),
-                Message = message,
-                Title = "Draft"
-            };
-
-        private static ScreenRenderModel BuildDraftSummaryScreen(
-            WorldState world,
-            Team humanTeam,
-            League league,
-            ScheduledMatch match,
-            RoundDraft draft,
-            string? message = null) =>
-            new()
-            {
-                Commands =
-                [
-                    ConsoleConstants.Continue,
-                    ConsoleConstants.ShowChampions,
-                    ConsoleConstants.Cancel,
-                    ConsoleConstants.Help
-                ],
-                ContentLines =
-                [
-                    "Round 1 draft complete.",
-                    $"Blue team: {FormatTeamName(world, match.HomeTeamId)}",
-                    .. FormatLineup(draft.BlueChampions),
-                    string.Empty,
-                    $"Red team: {FormatTeamName(world, match.AwayTeamId)}",
-                    .. FormatLineup(draft.RedChampions),
-                    string.Empty,
-                    "Bans: None",
-                    "Draft note: 10 unique champions selected across both teams."
-                ],
-                Header = BuildHeader(world, humanTeam, league),
-                Message = message,
-                Title = "Draft Summary"
-            };
-
-        private static ScreenRenderModel BuildLiveReplayScreen(
-            WorldState world,
-            Team humanTeam,
-            League league,
-            MatchPresentationState state,
-            string? message = null)
-        {
-            PresentedMatch presentedMatch = state.PresentedMatch!;
-            PresentedRound round = presentedMatch.Rounds[state.RoundIndex];
-            LiveReplayState replay = state.LiveReplay;
-            int revealedCount = Math.Min(replay.CurrentEventIndex, round.Messages.Count);
-            IReadOnlyList<ReplayMessage> visibleMessages = round.Messages
-                .Take(revealedCount)
-                .Reverse()
-                .Take(replay.VisibleMessageCount)
-                .ToList();
-            TimeSpan currentTime = replay.PlaybackState == ReplayPlaybackState.Complete && round.Messages.Count > 0
-                ? round.Messages[^1].Timestamp
-                : replay.CurrentPlaybackTime;
-            int blueRoundWins = presentedMatch.Rounds
-                .Take(state.RoundIndex)
-                .Count(presentedRound => string.Equals(
-                    presentedRound.Result.WinningTeamId,
-                    presentedMatch.Result.BlueTeamId,
-                    StringComparison.Ordinal));
-            int redRoundWins = state.RoundIndex - blueRoundWins;
-
-            List<string> lines =
-            [
-                $"{FormatTeamName(world, presentedMatch.Result.BlueTeamId)} vs {FormatTeamName(world, presentedMatch.Result.RedTeamId)}",
-                $"Round {round.Result.RoundNumber} | {FormatTimestamp(currentTime)} / 05:00 | {FormatReplayPlaybackState(replay.PlaybackState)} | Speed: {replay.ReplaySpeed}",
-                $"Match score: {blueRoundWins}-{redRoundWins}",
-                $"{FormatTeamName(world, presentedMatch.Result.BlueTeamId)} 0 | {FormatTeamName(world, presentedMatch.Result.RedTeamId)} 0",
-                string.Empty,
-                "Champion State",
-                "Champion                 Team   HP   Status"
-            ];
-            lines.AddRange(FormatChampionState(world, presentedMatch.Result, round.Result));
-            lines.Add(string.Empty);
-            lines.Add("Recent Events");
-            lines.AddRange(visibleMessages.Select(FormatReplayMessage));
-            lines.Add(string.Empty);
-            lines.Add($"Playback state: {FormatReplayPlaybackState(replay.PlaybackState)}");
-
-            return new ScreenRenderModel
-            {
-                Commands = replay.PlaybackState == ReplayPlaybackState.Playing
-                    ?
-                    [
-                        "Space/p pause",
-                        "s skip",
-                        "+ faster",
-                        "- slower",
-                        "q quit",
-                        "? help"
-                    ]
-                    :
-                    [
-                        ConsoleConstants.Step,
-                        ConsoleConstants.Play,
-                        ConsoleConstants.Pause,
-                        ConsoleConstants.Skip,
-                        ConsoleConstants.Faster,
-                        ConsoleConstants.Slower,
-                        ConsoleConstants.Details,
-                        ConsoleConstants.ShowChampions,
-                        ConsoleConstants.QuitReplay,
-                        ConsoleConstants.Help
-                    ],
-                ContentLines = lines,
-                Header = BuildHeader(world, humanTeam, league),
-                Message = message,
-                Title = "Live Replay"
-            };
-        }
-
-        private static ScreenRenderModel BuildRoundSummaryScreen(
-            WorldState world,
-            Team humanTeam,
-            League league,
-            MatchPresentationState state,
-            string? message = null)
-        {
-            PresentedRound round = state.PresentedMatch!.Rounds[state.RoundIndex];
-            IReadOnlyList<ReplayMessage> keyMoments = round.Messages
-                .Where(replayMessage => replayMessage.Severity != ReplayMessageSeverity.Normal)
-                .TakeLast(5)
-                .ToList();
-
-            return new ScreenRenderModel
-            {
-                Commands =
-                [
-                    ConsoleConstants.NextRound,
-                    ConsoleConstants.ViewReplay,
-                    "view round <number>",
-                    ConsoleConstants.PreviousRound,
-                    ConsoleConstants.Continue,
-                    ConsoleConstants.MatchSummary,
-                    ConsoleConstants.Home,
-                    ConsoleConstants.Back,
-                    ConsoleConstants.Help
-                ],
-                ContentLines =
-                [
-                    $"Round winner: {FormatTeamName(world, round.Result.WinningTeamId)}",
-                    $"Final round score: {FormatTeamName(world, round.Result.WinningTeamId)} wins",
-                    "Duration: 05:00",
-                    $"Blue team: {FormatTeamName(world, round.Result.BlueTeamId)}",
-                    $"Red team: {FormatTeamName(world, round.Result.RedTeamId)}",
-                    string.Empty,
-                    "Champion stats",
-                    .. FormatRoundChampionSummary(world, round.Result),
-                    string.Empty,
-                    "Key moments",
-                    .. keyMoments.Select(FormatReplayMessage)
-                ],
-                Header = BuildHeader(world, humanTeam, league),
-                Message = message,
-                Title = "Round Summary"
-            };
-        }
-
-        private static ScreenRenderModel BuildMatchSummaryScreen(
-            WorldState world,
-            Team humanTeam,
-            League league,
-            PresentedMatch presentedMatch,
-            string? message = null)
-        {
-            MatchResult result = presentedMatch.Result;
-            LeagueStanding standing = GetStanding(league, humanTeam.Id);
-
-            return new ScreenRenderModel
-            {
-                Commands =
-                [
-                    ConsoleConstants.Continue,
-                    ConsoleConstants.ViewReplay,
-                    ConsoleConstants.ViewRounds,
-                    "view round <number>",
-                    ConsoleConstants.ShowLeague,
-                    ConsoleConstants.ShowTeam,
-                    ConsoleConstants.ShowChampions,
-                    ConsoleConstants.Home,
-                    ConsoleConstants.Help
-                ],
-                ContentLines =
-                [
-                    $"Match winner: {FormatTeamName(world, result.WinningTeamId)}",
-                    $"Final match score: {FormatTeamName(world, result.BlueTeamId)} {result.BlueRoundWins} - "
-                    + $"{FormatTeamName(world, result.RedTeamId)} {result.RedRoundWins}",
-                    string.Empty,
-                    "Round results",
-                    .. result.RoundResults
-                        .OrderBy(round => round.RoundNumber)
-                        .Select(round => $"Round {round.RoundNumber}: {FormatTeamName(world, round.WinningTeamId)}"),
-                    string.Empty,
-                    $"Current record: {FormatRecord(standing)}",
-                    $"Current points: {FormatPoints(standing.Points)}",
-                    "Points change: reflected in standings",
-                    string.Empty,
-                    $"Key note: {FormatTeamName(world, result.WinningTeamId)} controlled the best-of-{result.BestOf}."
-                ],
-                Header = BuildHeader(world, humanTeam, league),
-                Message = message,
-                Title = "Match Summary"
-            };
-        }
-
-        private static ScreenRenderModel BuildPlayerScreen(
-            WorldState? world,
-            Player player,
-            Team? team,
-            League? league,
-            string? message = null)
-        {
-            List<string> lines =
-            [
-                player.Name,
-                string.Empty,
-                $"Team: {team?.Name ?? "Free Agent"}",
-                $"Position: {player.PositionRole}",
-                $"Rating: {GetPlayerRating(player)}",
-                $"Traits: {GetPlayerTraits(player)}",
-                string.Empty,
-                "Contract",
-                "Contracts are not implemented yet.",
-                string.Empty,
-                "Recent Performance",
-                "Recent player performance is not available yet.",
-                string.Empty,
-                "Notes",
-                "Future decision-making stats will appear here when player systems expand."
-            ];
-
-            return new ScreenRenderModel
-            {
-                Commands =
-                [
-                    ConsoleConstants.Back,
-                    ConsoleConstants.ShowTeam,
-                    ConsoleConstants.ShowSchedule,
-                    ConsoleConstants.Home,
-                    ConsoleConstants.Help
-                ],
-                ContentLines = lines,
-                Header = world is not null && team is not null && league is not null
-                    ? BuildHeader(world, team, league)
-                    : BuildChampionHeader(world),
-                Message = message,
-                Title = "Player Detail"
-            };
-        }
-
-        private static ScreenRenderModel BuildPlayoffPictureScreen(
-            WorldState world,
-            Team humanTeam,
-            League league,
-            string? message = null)
-        {
-            IReadOnlyList<string> divisionLeaderLines = league.Divisions
-                .OrderBy(division => division.Name)
-                .Select(division =>
-                {
-                    LeagueStanding? leader = GetStandingsForDivision(league, division).FirstOrDefault();
-                    return leader is null
-                        ? $"{division.Name}: standings unavailable"
-                        : $"{division.Name}: {FormatTeamName(world, leader.TeamId)} ({FormatRecord(leader)}, {FormatPoints(leader.Points)})";
-                })
-                .ToList();
-
-            IReadOnlyList<string> wildcardLines = league.Standings
-                .Where(standing => !league.Divisions
-                    .Select(division => GetStandingsForDivision(league, division).FirstOrDefault()?.TeamId)
-                    .Where(teamId => teamId is not null)
-                    .Contains(standing.TeamId))
-                .OrderByDescending(standing => standing.MatchWins)
-                .ThenByDescending(standing => standing.Points)
-                .ThenBy(standing => FormatTeamName(world, standing.TeamId), StringComparer.Ordinal)
-                .Take(4)
-                .Select(standing => $"{FormatTeamName(world, standing.TeamId)} ({FormatRecord(standing)}, {FormatPoints(standing.Points)})")
-                .ToList();
-
-            IReadOnlyList<string> bubbleLines = league.Standings
-                .Where(standing => !wildcardLines.Any(line => line.StartsWith(FormatTeamName(world, standing.TeamId), StringComparison.Ordinal)))
-                .OrderByDescending(standing => standing.MatchWins)
-                .ThenByDescending(standing => standing.Points)
-                .ThenBy(standing => FormatTeamName(world, standing.TeamId), StringComparer.Ordinal)
-                .Take(2)
-                .Select(standing => $"{FormatTeamName(world, standing.TeamId)} ({FormatRecord(standing)}, {FormatPoints(standing.Points)})")
-                .ToList();
-
-            List<string> lines =
-            [
-                $"Current league: {FormatLeagueName(league)}",
-                $"Current week: {world.Season.CurrentWeek}",
-                $"Season status: {GetSeasonStatus(world.Season.CurrentWeek)}",
-                string.Empty,
-                "Format",
-                "Regular season lasts 23 weeks.",
-                "Playoffs: 8 teams total.",
-                "- 4 division winners",
-                "- 4 wildcard teams",
-                "Week 24: League Quarterfinals, best-of-5",
-                "Week 25: League Semifinals, best-of-5",
-                "Week 26: League Finals, best-of-7",
-                "World Tier league champions advance to World Championship.",
-                "Week 27: World Championship Semifinals, best-of-7",
-                "Week 28: World Championship Final, best-of-9",
-                string.Empty,
-                "Division Leaders",
-                .. divisionLeaderLines
-            ];
-
-            if (league.Standings.Count == 0)
-            {
-                lines.Add(string.Empty);
-                lines.Add("Playoff picture is not available until standings data is available.");
-            }
-            else
-            {
-                lines.Add(string.Empty);
-                lines.Add("Wildcard Candidates");
-                lines.AddRange(wildcardLines.DefaultIfEmpty("Playoff picture is not available until standings data is available."));
-                lines.Add(string.Empty);
-                lines.Add("Bubble Teams");
-                lines.AddRange(bubbleLines.DefaultIfEmpty("Playoff picture is not available until standings data is available."));
-            }
-
-            return new ScreenRenderModel
-            {
-                Commands =
-                [
-                    ConsoleConstants.Home,
-                    ConsoleConstants.ShowLeague,
-                    ConsoleConstants.ShowSchedule,
-                    ConsoleConstants.Back,
-                    ConsoleConstants.Help
-                ],
-                ContentLines = lines,
-                Header = BuildHeader(world, humanTeam, league),
-                Message = message,
-                Title = "Playoff Picture"
+                    _matchScreenModelFactory.BuildMatchSummaryScreen(
+                        header,
+                        _world,
+                        humanTeam,
+                        league,
+                        _matchPresentationState.PresentedMatch,
+                        message),
+                _ => _careerScreenModelFactory.BuildHomeScreen(header, _world, humanTeam, league, message)
             };
         }
 
