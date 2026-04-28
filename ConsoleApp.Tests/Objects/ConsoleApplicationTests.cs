@@ -161,8 +161,11 @@ namespace ConsoleApp.Tests.Objects
             Assert.Multiple(() =>
             {
                 Assert.That(startOutput, Does.Contain("New game started."));
-                Assert.That(startOutput, Does.Contain("Coach: Human Coach"));
-                Assert.That(teamOutput, Does.Contain("Coach: Human Coach"));
+                Assert.That(startOutput, Does.Contain("Coach:"));
+                Assert.That(startOutput, Does.Not.Contain("Coach: Human Coach"));
+                Assert.That(startOutput, Does.Contain("Team:"));
+                Assert.That(startOutput, Does.Not.Contain("Team: AutoSim United"));
+                Assert.That(teamOutput, Does.Contain("Coach:"));
                 Assert.That(teamOutput, Does.Contain("Players:"));
                 Assert.That(leagueOutput, Does.Contain("Standings:"));
                 Assert.That(matchOutput, Does.Contain("Resolved week 1: 120 matches."));

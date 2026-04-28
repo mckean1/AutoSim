@@ -55,7 +55,8 @@ namespace AutoSim.Domain.Management.Services
             string? humanTeamName = null)
         {
             NameGenerationService names = nameGenerationService ?? new NameGenerationService((int)tierName * 397 + (int)region);
-            ReserveHumanNames(names, humanCoachName, humanTeamName);
+            string? resolvedHumanCoachName = humanPlacement is null ? null : ResolveCoachName(names, humanCoachName);
+            string? resolvedHumanTeamName = humanPlacement is null ? null : ResolveTeamName(names, humanTeamName);
             string leagueId = $"{tierName}-{region}".ToLowerInvariant();
             List<Coach> coaches = [];
             List<Player> players = [];
@@ -83,7 +84,7 @@ namespace AutoSim.Domain.Management.Services
                     {
                         Id = coachId,
                         IsHuman = isHumanTeam,
-                        Name = isHumanTeam ? GetHumanName(humanCoachName, "Human Coach") : names.GenerateCoachName(),
+                        Name = isHumanTeam ? resolvedHumanCoachName! : names.GenerateCoachName(),
                         TeamId = teamId
                     });
                     players.AddRange(PositionRoles.Select((role, index) => new Player
@@ -99,7 +100,7 @@ namespace AutoSim.Domain.Management.Services
                         DivisionId = divisionId,
                         Id = teamId,
                         LeagueId = leagueId,
-                        Name = isHumanTeam ? GetHumanName(humanTeamName, "AutoSim United") : names.GenerateTeamName(),
+                        Name = isHumanTeam ? resolvedHumanTeamName! : names.GenerateTeamName(),
                         PlayerIds = playerIds
                     });
                     divisionTeamIds.Add(teamId);
@@ -137,23 +138,28 @@ namespace AutoSim.Domain.Management.Services
             return new LeagueGenerationResult(league, coaches, players);
         }
 
-        private static string GetHumanName(string? name, string fallback) =>
-            string.IsNullOrWhiteSpace(name) ? fallback : name.Trim();
-
-        private static void ReserveHumanNames(
-            NameGenerationService nameGenerationService,
-            string? humanCoachName,
-            string? humanTeamName)
+        private static string ResolveCoachName(NameGenerationService nameGenerationService, string? humanCoachName)
         {
-            if (!string.IsNullOrWhiteSpace(humanCoachName))
+            if (string.IsNullOrWhiteSpace(humanCoachName))
             {
-                nameGenerationService.ReservePersonName(humanCoachName);
+                return nameGenerationService.GenerateCoachName();
             }
 
-            if (!string.IsNullOrWhiteSpace(humanTeamName))
+            string coachName = humanCoachName.Trim();
+            nameGenerationService.ReservePersonName(coachName);
+            return coachName;
+        }
+
+        private static string ResolveTeamName(NameGenerationService nameGenerationService, string? humanTeamName)
+        {
+            if (string.IsNullOrWhiteSpace(humanTeamName))
             {
-                nameGenerationService.ReserveTeamName(humanTeamName);
+                return nameGenerationService.GenerateTeamName();
             }
+
+            string teamName = humanTeamName.Trim();
+            nameGenerationService.ReserveTeamName(teamName);
+            return teamName;
         }
     }
 }

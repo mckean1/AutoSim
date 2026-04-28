@@ -70,6 +70,28 @@ namespace AutoSim.Domain.Tests.Management.Services
         }
 
         [Test]
+        public void CreateWorld_BlankHumanNames_GeneratesCoachAndTeamNames()
+        {
+            WorldState world = new WorldGenerationService().CreateWorld(
+                seed: 123,
+                humanCoachName: " ",
+                humanTeamName: " ");
+            Coach humanCoach = world.Coaches.Single(coach => coach.IsHuman);
+            Team humanTeam = world.Tiers
+                .SelectMany(tier => tier.Leagues)
+                .SelectMany(league => league.Teams)
+                .Single(team => team.Id == humanCoach.TeamId);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(humanCoach.Name, Is.Not.Empty);
+                Assert.That(humanCoach.Name, Is.Not.EqualTo("Human Coach"));
+                Assert.That(humanTeam.Name, Is.Not.Empty);
+                Assert.That(humanTeam.Name, Is.Not.EqualTo("AutoSim United"));
+            });
+        }
+
+        [Test]
         public void CreateWorld_NewGame_GeneratesUniqueCoachPlayerAndTeamNames()
         {
             WorldState world = new WorldGenerationService().CreateWorld(seed: 123);

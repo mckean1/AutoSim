@@ -56,12 +56,10 @@ namespace AutoSim.Domain.Management.Services
         /// <returns>The generated world state.</returns>
         public WorldState CreateWorld(int seed, string? humanCoachName = null, string? humanTeamName = null)
         {
-            string coachName = string.IsNullOrWhiteSpace(humanCoachName) ? "Human Coach" : humanCoachName.Trim();
-            string teamName = string.IsNullOrWhiteSpace(humanTeamName) ? "AutoSim United" : humanTeamName.Trim();
             Random rng = new(seed);
             NameGenerationService nameGenerationService = new(seed);
-            nameGenerationService.ReservePersonName(coachName);
-            nameGenerationService.ReserveTeamName(teamName);
+            string coachName = ResolveCoachName(nameGenerationService, humanCoachName);
+            string teamName = ResolveTeamName(nameGenerationService, humanTeamName);
             HumanPlacement humanPlacement = new(
                 Regions[rng.Next(Regions.Length)],
                 Divisions[rng.Next(Divisions.Length)],
@@ -111,6 +109,30 @@ namespace AutoSim.Domain.Management.Services
                 Tiers = tiers,
                 WorldChampionshipHistory = new WorldChampionshipHistory()
             };
+        }
+
+        private static string ResolveCoachName(NameGenerationService nameGenerationService, string? humanCoachName)
+        {
+            if (string.IsNullOrWhiteSpace(humanCoachName))
+            {
+                return nameGenerationService.GenerateCoachName();
+            }
+
+            string coachName = humanCoachName.Trim();
+            nameGenerationService.ReservePersonName(coachName);
+            return coachName;
+        }
+
+        private static string ResolveTeamName(NameGenerationService nameGenerationService, string? humanTeamName)
+        {
+            if (string.IsNullOrWhiteSpace(humanTeamName))
+            {
+                return nameGenerationService.GenerateTeamName();
+            }
+
+            string teamName = humanTeamName.Trim();
+            nameGenerationService.ReserveTeamName(teamName);
+            return teamName;
         }
     }
 }

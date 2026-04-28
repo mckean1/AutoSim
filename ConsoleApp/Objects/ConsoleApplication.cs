@@ -3,7 +3,6 @@ using AutoSim.Domain.Management.Interfaces;
 using AutoSim.Domain.Management.Models;
 using AutoSim.Domain.Management.Services;
 using AutoSim.Domain.Objects;
-using AutoSim.Domain.Services;
 using ConsoleApp.Constants;
 using ConsoleApp.Services;
 
@@ -22,6 +21,7 @@ namespace ConsoleApp.Objects
 
         private string _command;
         private string _previousCommand;
+        private bool _isProcessingCommand;
         private readonly RoundAnalysisRenderer _roundAnalysisRenderer;
         private readonly AggregateRoundAnalysisRenderer _aggregateRoundAnalysisRenderer;
         private readonly AggregateRoundAnalyzer _aggregateRoundAnalyzer;
@@ -45,6 +45,7 @@ namespace ConsoleApp.Objects
         {
             _command = string.Empty;
             _previousCommand = string.Empty;
+            _isProcessingCommand = false;
             _logDirectory = logDirectory;
             _roundAnalysisRenderer = new RoundAnalysisRenderer();
             _aggregateRoundAnalysisRenderer = new AggregateRoundAnalysisRenderer();
@@ -90,29 +91,38 @@ namespace ConsoleApp.Objects
         private void ProcessCommand()
         {
             Console.SetCursorPosition(0, 1);
+            _isProcessingCommand = true;
 
-            if (string.IsNullOrWhiteSpace(_command))
+            try
             {
-                _command = _previousCommand;
-            }
+                if (string.IsNullOrWhiteSpace(_command))
+                {
+                    _command = _previousCommand;
+                }
 
-            if (IsExitCommand())
-            {
-                Console.WriteLine("Exiting the application.");
-                Environment.Exit(0);
-            }
+                if (IsExitCommand())
+                {
+                    Console.WriteLine("Exiting the application.");
+                    Environment.Exit(0);
+                }
 
-            if (IsStartGameCommand())
-            {
-                Console.Write(StartGame(ReadRequiredValue("Coach Name"), ReadRequiredValue("Team Name")));
-            }
-            else
-            {
-                Console.Write(ExecuteCommand(_command));
-            }
+                if (IsStartGameCommand())
+                {
+                    Console.Write(StartGame(ReadOptionalValue("Coach Name"), ReadOptionalValue("Team Name")));
+                }
+                else
+                {
+                    Console.Write(ExecuteCommand(_command));
+                }
 
-            _previousCommand = _command;
-            _command = string.Empty;
+                _previousCommand = _command;
+            }
+            finally
+            {
+                _isProcessingCommand = false;
+                _command = string.Empty;
+                ClearPendingInput();
+            }
         }
 
         /// <summary>
@@ -177,6 +187,11 @@ namespace ConsoleApp.Objects
 
         private void HandleBackspace()
         {
+            if (_isProcessingCommand)
+            {
+                return;
+            }
+
             if (_command.Length > 0)
             {
                 _command = _command[..^1];
@@ -185,6 +200,11 @@ namespace ConsoleApp.Objects
 
         private void HandleCharacterInput(ConsoleKeyInfo key)
         {
+            if (_isProcessingCommand)
+            {
+                return;
+            }
+
             if (!char.IsControl(key.KeyChar))
             {
                 _command += key.KeyChar;
@@ -227,19 +247,80 @@ namespace ConsoleApp.Objects
                 return "No game has been started. Use start first." + Environment.NewLine;
             }
 
-            Team humanTeam = GetHumanTeam(_world);
-            int resolvedWeek = _world.Season.CurrentWeek;
-            SeasonProgressionResult result = _seasonProgressionService.ResolveCurrentWeek(_world);
-            _world = result.World;
-            MatchResult? humanResult = result.MatchResults
-                .FirstOrDefault(matchResult => IsHumanMatch(matchResult, humanTeam.Id, _world));
+            bool? wasCursorVisible = HideCursor();
+            int? statusLineTop = WriteTransientStatus("Simulating matches for the current week...");
 
-            string humanSummary = humanResult is null
-                ? "Your team did not have a scheduled match this week."
-                : RenderMatchResult(_world, humanResult);
+            try
+            {
+                Team humanTeam = GetHumanTeam(_world);
+                int resolvedWeek = _world.Season.CurrentWeek;
+                SeasonProgressionResult result = _seasonProgressionService.ResolveCurrentWeek(_world);
+                _world = result.World;
+                MatchResult? humanResult = result.MatchResults
+                    .FirstOrDefault(matchResult => IsHumanMatch(matchResult, humanTeam.Id, _world));
 
-            return $"Resolved week {resolvedWeek}: {result.MatchResults.Count} matches." + Environment.NewLine
-                + humanSummary + Environment.NewLine;
+                string humanSummary = humanResult is null
+                    ? "Your team did not have a scheduled match this week."
+                    : RenderMatchResult(_world, humanResult);
+
+                return $"Resolved week {resolvedWeek}: {result.MatchResults.Count} matches." + Environment.NewLine
+                    + humanSummary + Environment.NewLine;
+            }
+            finally
+            {
+                ClearTransientStatus(statusLineTop);
+                RestoreCursor(wasCursorVisible);
+            }
+        }
+
+        private static void ClearPendingInput()
+        {
+            try
+            {
+                while (Console.KeyAvailable)
+                {
+                    Console.ReadKey(intercept: true);
+                }
+            }
+            catch (InvalidOperationException)
+            {
+                // KeyAvailable throws when input is redirected, such as during test runs.
+            }
+        }
+
+        private static int? WriteTransientStatus(string message)
+        {
+            try
+            {
+                int statusLineTop = Console.CursorTop;
+                Console.WriteLine(message);
+                return statusLineTop;
+            }
+            catch (IOException)
+            {
+                return null;
+            }
+        }
+
+        private static void ClearTransientStatus(int? statusLineTop)
+        {
+            if (statusLineTop is null)
+            {
+                return;
+            }
+
+            try
+            {
+                Console.SetCursorPosition(0, statusLineTop.Value);
+                Console.Write(new string(' ', Console.BufferWidth - 1));
+                Console.SetCursorPosition(0, statusLineTop.Value);
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+            }
+            catch (IOException)
+            {
+            }
         }
 
         private string StartGame(string? coachName = null, string? teamName = null)
@@ -259,19 +340,46 @@ namespace ConsoleApp.Objects
                 + $"Division: {humanDivision.Name} Division" + Environment.NewLine;
         }
 
-        private static string ReadRequiredValue(string label)
+        private static bool? HideCursor()
         {
-            while (true)
+            if (!OperatingSystem.IsWindows())
             {
-                Console.Write($"{label}: ");
-                string? value = Console.ReadLine();
-                if (!string.IsNullOrWhiteSpace(value))
-                {
-                    return value.Trim();
-                }
-
-                Console.WriteLine($"{label} is required.");
+                return null;
             }
+
+            try
+            {
+                bool wasCursorVisible = Console.CursorVisible;
+                Console.CursorVisible = false;
+                return wasCursorVisible;
+            }
+            catch (IOException)
+            {
+                return null;
+            }
+        }
+
+        private static void RestoreCursor(bool? wasCursorVisible)
+        {
+            if (wasCursorVisible is null || !OperatingSystem.IsWindows())
+            {
+                return;
+            }
+
+            try
+            {
+                Console.CursorVisible = wasCursorVisible.Value;
+            }
+            catch (IOException)
+            {
+            }
+        }
+
+        private static string? ReadOptionalValue(string label)
+        {
+            Console.Write($"{label} (blank to generate): ");
+            string? value = Console.ReadLine();
+            return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
         }
 
         private string ShowLeague()
